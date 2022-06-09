@@ -1,7 +1,9 @@
-#=
-The Vectors defined here are necessary to 
-ClapeyronParam
-=#
+"""
+    Compressed4DMatrix{T,V<:AbstractVector{T}}
+
+struct used internally to store association data.
+
+"""
 struct Compressed4DMatrix{T,V<:AbstractVector{T}} 
     values::V
     outer_indices::Vector{Tuple{Int,Int}} #index of components
@@ -107,7 +109,7 @@ function Base.getindex(m::AssocView{T},i::Int,j::Int) where T
         idxs = searchsorted(m.indices,(i,j))
         if iszero(length(idxs)) 
             idxs = searchsorted(m.indices,(j,i))
-            iszero(length(idxs)) &&  return zero(T)  
+            iszero(length(idxs)) &&  return zero(T)
         end
         idx = first(idxs)
         return m.values[idx]
@@ -130,14 +132,19 @@ function zero_assoc(m::Compressed4DMatrix,x::T = 0.0) where T <:Number
 end
 =#
 function indices(x::Compressed4DMatrix)
-    return zip(1:length(x.values),x.outer_indices,x.inner_indices)
+    xin = x.outer_indices
+    l = 1:length(xin) 
+    return zip(l,xin,x.inner_indices)
 end
 
-function indices(x::PackedVofV)
-    return x.p
-end
 
 
+"""
+    SparsePackedMofV{T,V<:AbstractVector{T}} <:SparseArrays.AbstractSparseMatrixCSC{E,Int}
+
+Sparse Matrix struct used internally to store a matrix of Vectors efficiently.
+
+"""
 struct SparsePackedMofV{E,P<:PackedVofV}<:SparseArrays.AbstractSparseMatrixCSC{E,Int}
     storage::P
     idx::SparseMatrixCSC{Int,Int}
@@ -201,4 +208,20 @@ function Base.show(io::IO,::MIME"text/plain",A::SparsePackedMofV)
             println(io,"  ($i,$j) => $val")
         end
     end
+end
+
+# Operations
+function Base.:(+)(matrix::Compressed4DMatrix, x::Number)
+    values = matrix.values .+ x
+    return Compressed4DMatrix(values, matrix.outer_indices, matrix.inner_indices, matrix.outer_size, matrix.inner_size)
+end
+
+function Base.:(*)(matrix::Compressed4DMatrix, x::Number)
+    values = matrix.values .* x
+    return Compressed4DMatrix(values, matrix.outer_indices, matrix.inner_indices, matrix.outer_size, matrix.inner_size)
+end
+
+function Base.:(^)(matrix::Compressed4DMatrix, x::Number)
+    values = matrix.values .^ x
+    return Compressed4DMatrix(values, matrix.outer_indices, matrix.inner_indices, matrix.outer_size, matrix.inner_size)
 end

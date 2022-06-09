@@ -1,20 +1,12 @@
 mw(model::EoSModel) = model.params.Mw.values
 
 function group_molecular_weight(groups::GroupParam,mw,z = @SVector [1.])
-    n = groups.n_flattenedgroups
     res = zero(first(z))
-    Σz = sum(z)
-    @inbounds for i in 1:length(groups.components)
-        ni = n[i]
-        gi = groups.i_groups[i]
-        mwi = zero(res)
-        for idx in 1:length(gi)
-            j = gi[idx]
-            mwi += mw[j]*ni[j]
-        end
+    for ni in groups.n_flattenedgroups
+        mwi = dot(ni,mw)
         res +=z[i]*mwi
     end
-    return 0.001*res/Σz
+    return 0.001*res/sum(z)
 end
 
 comp_molecular_weight(mw,z = @SVector [1.]) = 0.001*dot(mw,z)
@@ -112,55 +104,6 @@ end
     (T <= _0) | (V <= _0)   
 end
 
-struct FractionVector{T,V} <: AbstractVector{T}
-    vec::V
-    val::T
-end
-#=
-
-Fraction Vector
-useful when expressing fractions in n-1 components.
-the last component is calculated at build time.
-it allocates less than creating a new vector or appending.
-=#
-##
-function FractionVector(v::AbstractVector)
-    a = one(eltype(v))
-    # any(x->x<0,v) && throw(DomainError(v,"all elements of a fraction vector should be positive."))
-    a -=sum(v)
-    # a < 0 && throw(DomainError(a,"the values of the input vector add to more than one"))
-    return FractionVector(v,a) 
-end
-
-function FractionVector(v::Real)
-    a = one(v) 
-    # (v < zero(v)) && throw(DomainError(v,"all elements of a fraction vector should be positive."))
-    a -= v
-    # a < 0 && throw(DomainError(a,"the values of the input vector add to more than one"))
-    return FractionVector(v,a)
-end
-
-
-@inline Base.eltype(v::FractionVector{T}) where T = T
-@inline Base.length(v::FractionVector)::Int = Base.length(v.vec) + 1
-
-@inline function Base.length(v::FractionVector{T,<:Real})::Int where T
-    return 2
-end
-
-@inline Base.size(v::FractionVector) = (length(v),)
-@inline function Base.getindex(v::FractionVector,i::Int)
-    @boundscheck checkbounds(v, i)
-    return ifelse(length(v)==i,v.val,v.vec[min(length(v.vec),i)])
-end
-
-@inline function Base.getindex(v::FractionVector{T,<:Real},i::Int) where T
-    @boundscheck checkbounds(v, i)
-    return ifelse(i==1,v.vec,v.val)
-end
-
-Base.IndexStyle(::Type{<:FractionVector}) = IndexLinear()
-
 #the only macro needed in methods
 """
     @nan(function_call,default=NaN)
@@ -181,10 +124,26 @@ macro nan(Base.@nospecialize(fcall),default = nothing)
     end |> esc
 end
 
+function gradient_type(V,T,z::StaticArray)
+    μ = typeof(V+T+first(z))
+    return StaticArrays.similar_type(z,μ)
+end
+
+function gradient_type(V,T,z::Vector)
+    μ = typeof(V+T+first(z))
+    return Vector{μ}
+end
+
+function gradient_type(V,T,z::FractionVector)
+    μ = typeof(V+T+first(z))
+    return Vector{μ}
+end
+
 include("initial_guess.jl")
 include("differentials.jl")
 include("VT.jl")
 include("property_solvers/property_solvers.jl")
+include("stability.jl")
 include("pT.jl")
 include("unitful_base.jl")
 include("unitful_methods.jl")

@@ -1,11 +1,4 @@
-struct RKParam <: EoSParam
-    a::PairParam{Float64}
-    b::PairParam{Float64}
-    Tc::SingleParam{Float64}
-    Pc::SingleParam{Float64}
-    Mw::SingleParam{Float64}
-end
-
+const RKParam = ABCubicParam
 abstract type RKModel <: ABCubicModel end
 
 struct RK{T <: IdealModel,α,c,M} <: RKModel
@@ -16,12 +9,56 @@ struct RK{T <: IdealModel,α,c,M} <: RKModel
     translation::c
     params::RKParam
     idealmodel::T
-    absolutetolerance::Float64
     references::Array{String,1}
 end
 
 @registermodel RK
 export RK
+
+"""
+    RK(components::Vector{String}; idealmodel=BasicIdeal,
+    alpha = PRAlpha,
+    mixing = vdW1fRule,
+    activity=nothing,
+    translation=NoTranslation,
+    userlocations=String[],
+    ideal_userlocations=String[],
+    alpha_userlocations = String[],
+    mixing_userlocations = String[],
+    activity_userlocations = String[],
+    translation_userlocations = String[],
+    verbose=false)
+
+## Input parameters
+- `Tc`: Single Parameter (`Float64`) - Critical Temperature `[K]`
+- `Pc`: Single Parameter (`Float64`) - Critical Pressure `[Pa]`
+- `Mw`: Single Parameter (`Float64`) - Molecular Weight `[g/mol]`
+- `k`: Pair Parameter (`Float64`)
+
+## Model Parameters
+- `Tc`: Single Parameter (`Float64`) - Critical Temperature `[K]`
+- `Pc`: Single Parameter (`Float64`) - Critical Pressure `[Pa]`
+- `Mw`: Single Parameter (`Float64`) - Molecular Weight `[g/mol]`
+- `a`: Pair Parameter (`Float64`)
+- `b`: Pair Parameter (`Float64`)
+
+## Input models
+- `idealmodel`: Ideal Model
+- `alpha`: Alpha model
+- `mixing`: Mixing model
+- `activity`: Activity Model, used in the creation of the mixing model.
+- `translation`: Translation Model
+
+## Description
+Redlich-Kwong Equation of state.
+```
+P = RT/(V-Nb) + a•α(T)/(V(V+Nb))
+```
+
+## References
+1. Redlich, O., & Kwong, J. N. S. (1949). On the thermodynamics of solutions; an equation of state; fugacities of gaseous solutions. Chemical Reviews, 44(1), 233–244. doi:10.1021/cr60137a013
+"""
+RK
 
 function RK(components::Vector{String}; idealmodel=BasicIdeal,
     alpha = RKAlpha,
@@ -47,8 +84,8 @@ function RK(components::Vector{String}; idealmodel=BasicIdeal,
     init_translation = init_model(translation,components,translation_userlocations,verbose)
     icomponents = 1:length(components)
     packagedparams = RKParam(a,b,Tc,pc,Mw)
-    references = String[]
-    model = RK(components,icomponents,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,1e-12,references)
+    references = String["10.1021/cr60137a013"]
+    model = RK(components,icomponents,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,references)
     return model
 end
 
@@ -72,14 +109,13 @@ function cubic_poly(model::RKModel,p,T,z)
     RT⁻¹ = 1/(R̄*T)
     A = a*p* RT⁻¹* RT⁻¹
     B = b*p* RT⁻¹
-    _1 = one(a)
+    _1 = one(A)
     return (-A*B, -B*(B+_1) + A, -_1, _1),c
 end
 
 
-function a_res(model::RKModel, V, T, z)
-    n=sum(z)
-    ā,b̄,c̄ = cubic_ab(model,V,T,z,n)
+function a_res(model::RKModel, V, T, z,_data = data(model,V,T,z))
+    n,ā,b̄,c̄ = _data
     ρt = (V/n+c̄)^(-1) # translated density
     ρ  = n/V
     RT⁻¹ = 1/(R̄*T)

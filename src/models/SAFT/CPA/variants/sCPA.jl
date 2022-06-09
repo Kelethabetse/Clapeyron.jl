@@ -8,14 +8,63 @@ struct sCPA{T <: IdealModel,c <: CubicModel} <: sCPAModel
     sites::SiteParam
     idealmodel::T
     assoc_options::AssocOptions
-    absolutetolerance::Float64
     references::Array{String,1}
 end
 
 @registermodel sCPA
 export sCPA
 
-export sCPA
+"""
+    sCPAModel <: CPAModel
+
+    function sCPA(components; 
+        idealmodel=BasicIdeal, 
+        cubicmodel=RK, 
+        alpha=sCPAAlpha, 
+        mixing=vdW1fRule,
+        activity=nothing,
+        translation=NoTranslation, 
+        userlocations=String[], 
+        ideal_userlocations=String[], 
+        alpha_userlocations=String[],
+        activity_userlocations=String[],
+        mixing_userlocations=String[],
+        translation_userlocations=String[],
+        verbose=false,
+        assoc_options = AssocOptions())
+
+## Input parameters
+- `Mw`: Single Parameter (`Float64`) - Molecular Weight `[g/mol]`
+- `m`: Single Parameter (`Float64`) - Number of segments (no units)
+- `a`: Single Parameter (`Float64`) - Atraction Parameter
+- `b`: Single Parameter (`Float64`) - Covolume
+- `c1`: Single Parameter (`Float64`) - α-function constant Parameter
+- `k`: Pair Parameter (`Float64`) - Binary Interaction Paramater (no units)
+- `epsilon_assoc`: Association Parameter (`Float64`) - Reduced association energy `[K]`
+- `bondvol`: Association Parameter (`Float64`) - Association Volume `[m^3]`
+
+## Model Parameters
+- `Mw`: Single Parameter (`Float64`) - Molecular Weight `[g/mol]`
+- `m`: Single Parameter (`Float64`) - Number of segments (no units)
+- `a`: Pair Parameter (`Float64`) - Mixed Atraction Parameter
+- `b`: Pair Parameter (`Float64`) - Mixed Covolume
+- `c1`: Single Parameter (`Float64`) - α-function constant Parameter
+- `epsilon_assoc`: Association Parameter (`Float64`) - Reduced association energy `[K]`
+- `bondvol`: Association Parameter (`Float64`) - Association Volume `[m^3]`
+
+## Input models
+- `idealmodel`: Ideal Model
+- `cubicmodel`: Cubic Model
+
+## Description
+
+simplified CPA
+
+## References
+1. Kontogeorgis, G. M., Michelsen, M. L., Folas, G. K., Derawi, S., von Solms, N., & Stenby, E. H. (2006). Ten years with the CPA (cubic-plus-association) equation of state. Part 1. Pure compounds and self-associating systems. Industrial & Engineering Chemistry Research, 45(14), 4855–4868. doi:10.1021/ie051305v
+"""
+sCPA
+
 function sCPA(components; 
             idealmodel=BasicIdeal, 
             cubicmodel=RK, 
@@ -31,8 +80,8 @@ function sCPA(components;
             translation_userlocations=String[],
             verbose=false,
             assoc_options = AssocOptions())
-    icomponents = 1:length(components)
 
+    icomponents = 1:length(components)
     params,sites = getparams(components, ["SAFT/CPA/sCPA/", "properties/molarmass.csv","properties/critical.csv"]; userlocations=userlocations, verbose=verbose)
     Mw  = params["Mw"]
     k  = params["k"]
@@ -57,21 +106,21 @@ function sCPA(components;
         cubicparams = PRParam(a, b, params["Tc"],params["pc"],Mw)
     end
 
-    init_cubicmodel = cubicmodel(components,icomponents,init_alpha,init_mixing,init_translation,cubicparams,init_idealmodel,1e-12,String[])
+    init_cubicmodel = cubicmodel(components,icomponents,init_alpha,init_mixing,init_translation,cubicparams,init_idealmodel,String[])
 
     references = ["10.1021/ie051305v"]
 
-    model = sCPA(components, icomponents, init_cubicmodel, packagedparams, sites, init_idealmodel, assoc_options, 1e-12, references)
+    model = sCPA(components, icomponents, init_cubicmodel, packagedparams, sites, init_idealmodel, assoc_options, references)
     return model
 end
 
 function Δ(model::sCPAModel, V, T, z, i, j, a, b)
     ϵ_associjab = model.params.epsilon_assoc.values[i,j][a,b] * 1e2/R̄
     βijab = model.params.bondvol.values[i,j][a,b] * 1e-3
-    x = z/∑(z)
+    Σz = ∑(z)
     b = model.params.b.values
-    b̄ = ∑(b .* (x * x'))
-    η = b̄*∑(z)/(4*V)
+    b̄ = dot(z,b,z)/(Σz*Σz)
+    η = b̄*Σz/(4*V)
     g = (1-1.9η)^-1
     bij = (b[i,i]+b[j,j])/2
     return g*(exp(ϵ_associjab/T)-1)*βijab*bij/N_A

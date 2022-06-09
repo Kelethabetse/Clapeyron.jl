@@ -99,7 +99,7 @@ The Struct consists of the following fields:
 * sites: a [`SiteParam`](@ref)
 * params: the Struct paramstype that contains all parameters in the model
 * idealmodel: the IdealModel struct that determines which ideal model to use
-* assoc_options: struct containing options for the association solver. see [AssocOptions](@ref)
+* assoc_options: struct containing options for the association solver. see [`AssocOptions`](@ref)
 * references: reference for this EoS
 
 See the tutorial or browse the implementations to see how this is used.
@@ -208,13 +208,13 @@ function (::Type{model})(params::EoSParam,
         assoc_options::AssocOptions = AssocOptions(),
         verbose::Bool = false) where model <:EoSModel
 
-        components = groups.components
-        icomponents = 1:length(components)
-        init_idealmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
-        return model(components, icomponents,
-        groups,
-        sites,
-        params, init_idealmodel, assoc_options, references)
+    components = groups.components
+    icomponents = 1:length(components)
+    init_idealmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
+    return model(components, icomponents,
+    groups,
+    sites,
+    params, init_idealmodel, assoc_options, references)
 end
 
 function (::Type{model})(params::EoSParam,
@@ -244,32 +244,34 @@ function (::Type{model})(params::EoSParam,
     init_idealmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
     return model(components, icomponents,
     sites, params, init_idealmodel, assoc_options, references)
-
 end
 
-#non GC may be shared with model simple
+
+#normal macro model
 function (::Type{model})(params::EoSParam,
-        idealmodel::IDEALTYPE = BasicIdeal;
+        idealmodel::IDEALTYPE;
         ideal_userlocations::Vector{String}=String[],
         references::Vector{String}=String[],
         assoc_options::AssocOptions = AssocOptions(),
         verbose::Bool = false) where model <:EoSModel
 
-    if has_sites(model)
-        arbparam = arbitraryparam(params)
-        components = arbparam.components
-        sites = SiteParam(components)
-        return model(params,sites,idealmodel;ideal_userlocations,references,assoc_options,verbose)
-    end
-    #With sites out of the way, this is a simplemodel, no need to initialize the ideal model
+    arbparam = arbitraryparam(params)
+    components = arbparam.components
+    sites = SiteParam(components)
+    return model(params,sites,idealmodel;ideal_userlocations,references,assoc_options,verbose)
+end
+
+function (::Type{model})(params::EoSParam;
+    references::Vector{String}=String[],
+    verbose::Bool = false) where model <:EoSModel
     #if there isnt any params, just put empty values.
-    if length(fieldnames(typeof(params))) > 0
+    if Base.issingletontype(typeof(params))
+        components = String[]
+        icomponents =1:0
+    else
         arbparam = arbitraryparam(params)
         components = arbparam.components
         icomponents = 1:length(components)
-    else
-        components = String[]
-        icomponents =1:0
     end
     return model(components,icomponents,params,references)
 end
@@ -311,7 +313,7 @@ macro registermodel(model)
                 end
             
                 function Base.show(io::IO, model::$model)
-                    return gc_eosshow(io, mime, model)
+                    return gc_eosshow(io, model)
                 end
             end
         else
