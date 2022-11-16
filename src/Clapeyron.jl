@@ -17,6 +17,7 @@ using StaticArrays
 using NLSolvers
 using NLSolvers: NEqOptions
 using DiffResults, ForwardDiff
+using RDKitMinimalLib, ChemicalIdentifiers
 
 #compatibility and raw julia utilities
 include("utils/core_utils.jl")
@@ -45,6 +46,8 @@ include("models/types.jl")
 #show(model<:EoSModel)
 include("base/eosshow.jl")
 
+#group search
+include("utils/group_search.jl")
 
 #EoSParam, ClapeyronParam, All Params
 include("database/ClapeyronParam.jl")
