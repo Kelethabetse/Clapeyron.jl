@@ -169,10 +169,10 @@ function excess_g_res(model::UNIFACModel,p,T,z)
     return sum(z[i]*R̄*T*lnγ[i] for i ∈ @comps)
 end
 
-UNIFACGroups = [raw"[CX4;H3]" "CH3";
-raw"[CX4;H2]" "CH2";
-raw"[CX4;H1]" "CH";
-raw"[CX4;H0]" "C";
+UNIFACGroups = [raw"[CX4;H3;!R]" "CH3";
+raw"[CX4;H2;!R]" "CH2";
+raw"[CX4;H1;!R]" "CH";
+raw"[CX4;H0;!R]" "C";
 raw"[CX3;H2]=[CX3;H1]" "CH2=CH";
 raw"[CX3;H1]=[CX3;H1]" "CH=CH";
 raw"[CX3;H2]=[CX3;H0]" "CH2=C";
@@ -192,11 +192,10 @@ raw"[CX3H1](=O)" "CHO";
 raw"[CH3][CX3;H0](=[O])[O]" "CH3COO";
 raw"[CX4;H2][CX3](=[OX1])[OX2]" "CH2COO";
 raw"[CX3;H1](=[OX1])[OX2]" "HCOO";
-raw"[CH3][O]" "CH3O";
-raw"[CH2][O]" "CH2O";
-raw"[C;H1][O]" "CHO";
-raw"[CX4;H2;R][OX2;R]" "THF";
-raw"[CX3;H1;R][OX2;R]" "THF";
+raw"[CH3;!R][OH0;!R]" "CH3O";
+raw"[CH2;!R][OH0;!R]" "CH2O";
+raw"[C;H1;!R][OH0;!R]" "CHO";
+raw"[CX4;H2;R][OX2;R][CX4;H2;R]" "THF";
 raw"[CX4;H3][NX3;H2]" "CH3NH2";
 raw"[CX4;H2][NX3;H2]" "CH2NH2";
 raw"[CX4;H1][NX3;H2]" "CHNH2";
