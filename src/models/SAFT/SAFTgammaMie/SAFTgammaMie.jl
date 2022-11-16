@@ -202,3 +202,28 @@ function recombine_impl!(model::SAFTgammaMieModel)
     model.vrmodel.params.epsilon_assoc.values.values[:] = comp_epsilon_assoc.values.values
     return model
 end
+
+SAFTgammaMieGroups = [raw"[CX4H3]" "CH3";
+raw"[!R;CX4H2]" "CH2";
+raw"[!R;CX4H]" "CH";
+raw"[!R;CX4H0]" "C";
+
+
+
+raw"[CX3H2]" "CH2=";
+raw"[!R;CX3H1;!$([CX3H1](=O))]" "CH=";
+
+raw"[OX2H]-[C]=O" "COOH";
+
+raw"[#6X3H0;!$([#6X3H0](~O)(~O)(~O))](=[#8X1])[#8X2H0]" "COO";
+
+
+
+
+raw"[OX2H;!$([OX2H]-[#6]=[O]);!$([OX2H]-a)]" "OH";
+
+
+raw"[NX3H2]" "NH2";
+raw"[NX3H1;!R]" "NH";
+raw"[#7X3H0;!$([#7](~O)~O)]" "N";
+raw"[#7X3H1;R]" "cNH"]
