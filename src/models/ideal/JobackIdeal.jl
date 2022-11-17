@@ -233,7 +233,17 @@ function a_ideal(model::JobackIdealModel, V, T, z)
     return a_ideal(model.reidmodel,V,T,z)
 end
 
-export JobackIdeal
+function gibbs_formation_free_energy(model::JobackIdealModel, z=SA[1.])
+    ΔGf = model.params.G_form
+    n = model.groups.n_flattenedgroups
+    A = 0
+    for i in @comps
+        A+=z[i]*(sum(n[i].*ΔGf)+53.88)
+    end
+    return A
+end
+
+export JobackIdeal, gibbs_formation_free_energy
 
 JobackGroups = [raw"[CX4H3]" "-CH3";
 raw"[!R;CX4H2]" "-CH2-";
