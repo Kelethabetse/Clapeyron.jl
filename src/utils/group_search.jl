@@ -2,9 +2,9 @@ function get_groups(component::String,groups::Array{String})
     res = search_chemical(component)
     mol = get_mol(res.smiles)
     mol_list = get_substruct_matches(mol,mol)
-
+    
     queries = get_qmol.(groups[:,1])
-
+    
     atoms = mol_list[1]["atoms"]
     group_list = []
     group_id = []
@@ -23,7 +23,6 @@ function get_groups(component::String,groups::Array{String})
                     append!(atoms_list,smatch[j]["atoms"])
                     append!(coverage_atoms,[smatch[j]["atoms"]])
                     append!(coverage_bonds,[smatch[j]["bonds"]])
-    
                 else
                     # If no atoms covered by this group are already covered by other groups
                     if sum(smatch[j]["atoms"] .∈ [atoms_list])==0 
@@ -57,7 +56,7 @@ function get_groups(component::String,groups::Array{String})
                                     id_rm = group_id[id]
                                     name_rm = group_list[id]
                                     bond_rm =  coverage_bonds[id][coverage_bonds[id] .∈ [smatch[j]["bonds"]]]
-                                    filter(e->e ∉ overlap_atoms,atoms_list)
+                                    filter!(e->e∉overlap_atoms,atoms_list)
                                     filter!(e->e∉overlap_atoms,coverage_atoms[id])
                                     group_occ_list[id] -= 1
     
@@ -81,8 +80,10 @@ function get_groups(component::String,groups::Array{String})
                                 append!(group_occ_list,1)
                                 append!(coverage_atoms,[smatch[j]["atoms"]])
                                 append!(coverage_bonds,[smatch[j]["bonds"]])
+                                append!(atoms_list,smatch[j]["atoms"])
                             else
                                 group_occ_list[end] += 1
+                                append!(atoms_list,smatch[j]["atoms"])
                                 append!(coverage_atoms[end],smatch[j]["atoms"])
                                 append!(coverage_bonds[end],smatch[j]["bonds"])
                             end
@@ -92,11 +93,11 @@ function get_groups(component::String,groups::Array{String})
             end
         end
     end
-
+    
     if !(sum(atoms_list .∈ [atoms])==length(atoms))
-        warning("Could not find all groups")
+        @warn "Could not find all groups for"*component
     end
-
+    
     return (component,[groups[group_id[i],2] => group_occ_list[i] for i in 1:length(group_id)])
 end
 
