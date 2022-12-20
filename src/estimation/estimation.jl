@@ -50,30 +50,23 @@ mutable struct Estimation{T<:EoSModel}
     toestimate::ToEstimate
     filepaths::Array{String}
     data::Vector{EstimationData}
-    ignorefield::Union{Any,Vector{Symbol}}
+    ignorefield::Union{Nothing,Vector{Symbol}}
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", estimation::Estimation)
     print(io, typeof(estimation))
     println(io, " with data for:")
-    firstloop = true
-    for data in estimation.data
-        !firstloop && println(io, "")
-        print(io, "  :" * String(data.method))
-        firstloop = false
-    end
+    show_pairs(io,(d.method for d in estimation.data),prekey = "  :",quote_string = false)
     println(io, "\n to estimate:")
-    firstloop = true
-    for (param, indices) in zip(
-            estimation.toestimate.params, estimation.toestimate.indices)
-        !firstloop && println(io, "")
-        print(io, "  :" * String(param))
-        if !(indices === nothing)
-            print(io, " with indices => " * "[" * 
-                  join(indices,",") * "]")
+    function val_print(io,val)
+        if val !== nothing
+            print(io, " with indices => ")
+            print('[')
+            show_pairs(io,val,nothing,quote_string = false,pair_separator = ',')
+            print(']')
         end
-        firstloop = false
     end
+    show_pairs(io,estimation.toestimate.params,estimation.toestimate.indices," ",val_print,quote_string = false,prekey = "  :")
 end
 
 function Base.show(io::IO, estimation::Estimation)
@@ -85,7 +78,7 @@ function Estimation(model::EoSModel, toestimate::Vector{Dict{Symbol,Any}}, filep
 end
 
 function Estimation(model::EoSModel, toestimate::Vector{Dict{Symbol,Any}}, filepaths::Array{String})
-    return Estimation(model, deepcopy(model), ToEstimate(toestimate), filepaths, EstimationData(filepaths),[])
+    return Estimation(model, deepcopy(model), ToEstimate(toestimate), filepaths, EstimationData(filepaths),Symbol[])
 end
 
 function reload_data(estimation::Estimation)
@@ -139,7 +132,7 @@ export return_model
 function return_model(
         estimation::Estimation,
         model::EoSModel,
-        values::Vector{T} where {T<:Any}) 
+        values) 
     params = estimation.toestimate.params
     factor = estimation.toestimate.factor
     sym = estimation.toestimate.symmetric
@@ -147,26 +140,31 @@ function return_model(
     idx = estimation.toestimate.indices
     recombine = estimation.toestimate.recombine
     model = deepcopy(model)
-    for (i, param) in enumerate(params)
-        f = factor[i]
-        id = idx[i]
-        recomb = recombine[i]
-        if isdefined(model.params,param)
-            current_param = getfield(model.params, param)
-            if typeof(current_param) <: SingleParameter
-                current_param[id[1]] = values[i]*f
-            end
-            if typeof(current_param) <: PairParam
-                current_param[id[1],id[2],sym[i]] = values[i]*f
-                if (id[1]==id[2]) & recomb
-                    current_param.ismissingvalues[id[1],:] .= true
-                    current_param.ismissingvalues[:,id[1]] .= true
+    if isdefined(model,:params)
+        for (i, param) in enumerate(params)
+            f = factor[i]
+            id = idx[i]
+            recomb = recombine[i]
+            if isdefined(model.params,param)
+                current_param = getfield(model.params, param)
+                if typeof(current_param) <: SingleParameter
+                    current_param[id[1]] = values[i]*f
                 end
-            end
-            if typeof(current_param) <: AssocParam
-                current_param.values.values[id[1]] = values[i]*f
-                if cross_assoc[i]
-                    current_param.values.values[id[1]+1] = values[i]*f                
+                if typeof(current_param) <: PairParam
+                    current_param[id[1],id[2],sym[i]] = values[i]*f
+                    if (id[1]==id[2]) & recomb
+                        current_param.ismissingvalues[id[1],:] .= true
+                        current_param.ismissingvalues[:,id[1]] .= true
+                    elseif id[1]!=id[2]
+                        current_param.ismissingvalues[id[1],id[2]] = false
+                        current_param.ismissingvalues[id[2],id[1]] = false
+                    end
+                end
+                if typeof(current_param) <: AssocParam
+                    current_param.values.values[id[1]] = values[i]*f
+                    if cross_assoc[i]
+                        current_param.values.values[id[1]+1] = values[i]*f                
+                    end
                 end
             end
         end
@@ -183,7 +181,7 @@ end
 function return_model!(
     estimation::Estimation,
     model::EoSModel,
-    values::Vector{T} where {T<:Any}) 
+    values) 
     params = estimation.toestimate.params
     factor = estimation.toestimate.factor
     sym = estimation.toestimate.symmetric
@@ -205,6 +203,9 @@ function return_model!(
                     if (id[1]==id[2]) & recomb
                         current_param.ismissingvalues[id[1],:] .= true
                         current_param.ismissingvalues[:,id[1]] .= true
+                    elseif id[1]!=id[2]
+                        current_param.ismissingvalues[id[1],id[2]] = false
+                        current_param.ismissingvalues[id[2],id[1]] = false
                     end
                 end
                 if typeof(current_param) <: AssocParam
@@ -233,16 +234,16 @@ end
 
 export optimize!
 
-function optimize!(estimation::Estimation,Method=Metaheuristics.SA(N=500))
+function optimize!(estimation::Estimation,Method=Metaheuristics.SA(N=500,information = Metaheuristics.Information(f_optimum = 0.0)))
     nparams = length(estimation.toestimate.params)
 
     f(x) = obj_fun(estimation,x)
-
+    
     x0 = [estimation.toestimate.guess[i][1] for i ∈ 1:nparams]
     upper = [estimation.toestimate.upper[i][1] for i ∈ 1:nparams]
     lower = [estimation.toestimate.lower[i][1] for i ∈ 1:nparams]
     bounds = [lower upper]'
-    r = Metaheuristics.optimize(f, bounds, Method,logger=logger)
+    r = Metaheuristics.optimize(f, bounds, Method)
     model = return_model(estimation, estimation.model, Metaheuristics.minimizer(r))
     update_estimation!(estimation,model)
 end
@@ -251,9 +252,9 @@ function obj_fun(estimation::Estimation,guesses)
     F = 0
     model = return_model(estimation, estimation.model, guesses)
     for i ∈ 1:length(estimation.data)
-        property = getfield(Main,estimation.data[i].method)
+        property = estimation.data[i].method
         inputs = estimation.data[i].inputs
-        output = estimation.data[i].outputs[1]
+        outputs = estimation.data[i].outputs
         if isempty(inputs)
             prediction =  property(model)
         elseif length(inputs)==1
@@ -265,7 +266,12 @@ function obj_fun(estimation::Estimation,guesses)
         else
             prediction = property.(model,inputs...)
         end
-        F += sum(((prediction.-output)./output).^2)
+
+        if length(outputs)==1
+            F += sum(((prediction.-outputs[1])./outputs[1]).^2)
+        else
+            F += sum([sum([((prediction[i][j].-outputs[j][i])./outputs[j][i]).^2 for j in 1:length(prediction[i])]) for i in 1:length(prediction)])
+        end
     end
     if isnan(F)
         return 1e4

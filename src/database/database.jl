@@ -171,7 +171,6 @@ incoming group type: fitted
 
 Note, that the parser will not fail if you pass different parameters with different group types (For example if `a` has `param1` group type and `b` has `fit` group type)
 """
-
 function getparams(components,
                     locations::Array{String,1}=String[];
                     userlocations::Vector{String}=String[],
@@ -435,7 +434,7 @@ function read_csv(filepath,options::ParamOptions = DefaultOptions)::CSV.File
         normalisestring(norm_header; tofilter=r"[ \-\_\d]") ∈ ignorelist
     end
     
-    if startswith(filepath,"Clapeyron Database File")
+    if is_inline_csv(filepath)
         df = CSV.File(IOBuffer(filepath); header=3, pool=0,silencewarnings=true,drop = _drop, stringtype = String)
     else
         df = CSV.File(filepath; header=3, pool=0,silencewarnings=true,drop = _drop, stringtype = String)
@@ -680,8 +679,14 @@ function read_csv_options(filepath)
     else
         keywords = readcsvtype_keywords
         words = split(lowercase(strip(line, ',')), ' ')
+        if length(words) == 1
+            _estimator = Symbol(only(words))
+        else
+            _estimator = :error
+        end
         foundkeywords = intersect(words, keywords)
-        return (csvtype = _readcsvtype(foundkeywords),grouptype = :unknown)
+        
+        return (csvtype = _readcsvtype(foundkeywords),grouptype = :unknown,estimator = _estimator)
     end
 end
 
@@ -712,7 +717,8 @@ function __get_options(data)
     end
     _csvtype = _readcsvtype(get(opts_dict,"csvtype","invalid"))
     _grouptype = Symbol(get(opts_dict,"grouptype","unkwown"))
-    return (csvtype = _csvtype,grouptype = _grouptype)
+    _estimator = Symbol(get(opts_dict,"estimator","error"))
+    return (csvtype = _csvtype,grouptype = _grouptype,estimator = _estimator)
 end
 
 function valid_headerparams(csvheaders, options::ParamOptions = DefaultOptions)

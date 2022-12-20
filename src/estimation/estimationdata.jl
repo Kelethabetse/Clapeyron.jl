@@ -1,7 +1,7 @@
 using CSV, Tables
 
-struct EstimationData
-    method::Symbol
+struct EstimationData{𝔽}
+    method::𝔽
     inputs_name::Vector{Symbol}
     outputs_name::Vector{Symbol}
     inputs::Vector{Vector{Union{Float64,Missing}}}
@@ -12,7 +12,7 @@ struct EstimationData
     outputs_errortype::Vector{Union{Symbol,Nothing}}
 end
 
-errortypes = [:error_abs, :error_rel, :error_std]
+ERRORTYPES = [:error_abs, :error_rel, :error_std]
 
 # Copied from database.jl; methods that are common should be refactored into
 # separate files.
@@ -22,7 +22,7 @@ function extract_dataerror(df::CSV.File, csvheaders::Vector{String}, extract_hea
     errortype = Vector{Union{Symbol,Nothing}}(nothing, length(extract_headers))
     for (i, header) in enumerate(extract_headers)
         data[i] = Tables.getcolumn(df, Symbol(header))
-        for errortype_ ∈ errortypes
+        for errortype_ ∈ ERRORTYPES
             if header * "_" * String(errortype_) ∈ csvheaders
                 error[i] = Tables.getcolumn(df, Symbol(header * "_" * String(errortype_)))
                 errortype[i] = errortype_
@@ -37,13 +37,15 @@ function extract_dataerror(df::CSV.File, csvheaders::Vector{String}, extract_hea
 end
 
 function EstimationData(filepaths::Vector{String})
+    filepaths = flattenfilepaths(String[],filepaths)
     estimationdata = Vector{EstimationData}()
-    for filepath ∈ filepaths
-        method = Symbol(strip(getline(filepath, 2), [',']))
-        df = CSV.File(filepath; header=3, pool=0, silencewarnings=true)
+    for filepath ∈ filepaths 
+        csv_method = read_csv_options(filepath).estimator
+        method = getfield(Main,csv_method)
+        df = read_csv(filepath)
         csvheaders = String.(Tables.columnnames(df))
-        outputs_headers = chop.(String.(filter(x -> startswith(x, "out_") && !any(endswith.(x, "_" .* String.(errortypes))), csvheaders)), head=4, tail=0)
-        inputs_headers = filter(x -> !startswith(x, "out_") && !any(endswith.(x, "_" .* String.(errortypes))), csvheaders)
+        outputs_headers = chop.(String.(filter(x -> startswith(x, "out_") && !any(endswith.(x, "_" .* String.(ERRORTYPES))), csvheaders)), head=4, tail=0)
+        inputs_headers = filter(x -> !startswith(x, "out_") && !any(endswith.(x, "_" .* String.(ERRORTYPES))), csvheaders)
         inputs, inputs_error, inputs_errortype = extract_dataerror(
             df, csvheaders, inputs_headers)
         outputs, outputs_error, outputs_errortype = extract_dataerror(
@@ -67,7 +69,7 @@ function EstimationData(filepaths::Vector{String})
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", data::EstimationData)
-    println(io, "EstimationData{:" * String(data.method) * "}:")
+    println(io, "EstimationData{:" * String(Symbol(data.method)) * "}:")
     println(io, " Inputs:")
     for input in data.inputs_name
         println(io, "  :" * String(input))
@@ -82,5 +84,5 @@ function Base.show(io::IO, mime::MIME"text/plain", data::EstimationData)
 end
 
 function Base.show(io::IO, data::EstimationData)
-    print(io, "EstimationData{:" * String(data.method) * "}")
+    print(io, "EstimationData{:" * String(Symbol(data.method)) * "}")
 end
