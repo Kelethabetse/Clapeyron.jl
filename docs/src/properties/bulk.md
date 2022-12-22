@@ -37,7 +37,7 @@ Another way to do this is by using units,provided by `Unitful.jl`:
 using Unitful
 r = 18u"kg/m^3"
 T = 373.15"K"
-prop = helholtz_free_energy(model,r,T,z,output = u"kJ")
+prop = helmholtz_free_energy(model,r,T,z,output = u"kJ")
 ```
 Where `r` could be any molar or mass density, molar or mass volume, total volume or pressure. it also supports mass and mol amounts defined as units for the composition (`z`) If no units are provided for the composition, they will be considered moles.
 
