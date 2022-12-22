@@ -1,5 +1,5 @@
 Clapeyron database file
-name -> json name translator [csvtype = like]
+name -> json name translator. all jsons are from https://github.com/usnistgov/teqp [csvtype = like] 
 species,jsonname
 water,Water
 carbon dioxide,CarbonDioxide
