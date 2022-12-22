@@ -18,6 +18,7 @@ using NLSolvers
 using NLSolvers: NEqOptions
 using DiffResults, ForwardDiff
 using Downloads #for bibtex
+using JSON3 #for reference models
 #compatibility and raw julia utilities
 include("utils/core_utils.jl")
 

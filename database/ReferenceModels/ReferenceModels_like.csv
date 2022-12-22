@@ -1,0 +1,7 @@
+Clapeyron database file
+name -> json name translator [csvtype = like]
+species,jsonname
+water,Water
+carbon dioxide,CarbonDioxide
+ethanol,Ethanol
+hydrogen sulfide,HydrogenSulfide
