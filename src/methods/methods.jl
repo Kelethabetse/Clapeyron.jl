@@ -227,3 +227,5 @@ include("stability.jl")
 include("pT.jl")
 include("unitful_base.jl")
 include("unitful_methods.jl")
+include("association.jl")
+

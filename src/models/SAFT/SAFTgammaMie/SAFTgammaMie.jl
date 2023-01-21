@@ -1,8 +1,4 @@
 
-include("utils.jl")
-#just a holder for the z partitions.
-#to allow split_model to work correctly
-
 abstract type SAFTgammaMieModel <: SAFTVRMieModel end
 
 
@@ -32,7 +28,7 @@ end
 """
     SAFTgammaMie <: SAFTModel
 
-SAFTgammaMie(components; 
+SAFTgammaMie(components;
     idealmodel=BasicIdeal,
     userlocations=String[],
     group_userlocations=String[],
@@ -74,7 +70,7 @@ SAFT-γ-Mie EoS
 """
 SAFTgammaMie
 
-function SAFTgammaMie(components; 
+function SAFTgammaMie(components;
     idealmodel=BasicIdeal,
     userlocations=String[],
     group_userlocations = String[],
@@ -85,17 +81,17 @@ function SAFTgammaMie(components;
     groups = GroupParam(components, ["SAFT/SAFTgammaMie/SAFTgammaMie_groups.csv"]; group_userlocations = group_userlocations,verbose=verbose)
     params,sites = getparams(groups, ["SAFT/SAFTgammaMie","properties/molarmass_groups.csv"]; userlocations=userlocations, verbose=verbose)
     components = groups.components
-    
+
     gc_segment = params["vst"]
     shapefactor = params["S"]
 
     mw = group_sum(groups,params["Mw"])
-    
+
     mix_segment!(groups,shapefactor.values,gc_segment.values)
-    
+
     segment = SingleParam("segment",components,group_sum(groups,nothing))
-    
-    gc_sigma = sigma_LorentzBerthelot(params["sigma"])  
+
+    gc_sigma = sigma_LorentzBerthelot(params["sigma"])
     gc_sigma.values .*= 1E-10
     gc_sigma3 = PairParam(gc_sigma)
     gc_sigma3.values .^= 3
@@ -105,13 +101,13 @@ function SAFTgammaMie(components;
 
     gc_epsilon = epsilon_HudsenMcCoubrey(params["epsilon"], gc_sigma)
     epsilon = epsilon_HudsenMcCoubrey(group_pairmean(groups,gc_epsilon),sigma)
-    
+
     gc_lambda_a = lambda_LorentzBerthelot(params["lambda_a"])
     gc_lambda_r = lambda_LorentzBerthelot(params["lambda_r"])
 
     lambda_a = group_pairmean(groups,gc_lambda_a) |> lambda_LorentzBerthelot
     lambda_r = group_pairmean(groups,gc_lambda_r) |> lambda_LorentzBerthelot
- 
+
     #GC to component model in association
     gc_epsilon_assoc = params["epsilon_assoc"]
     gc_bondvol = params["bondvol"]
@@ -124,9 +120,9 @@ function SAFTgammaMie(components;
 
     gcparams = SAFTgammaMieParam(gc_segment, shapefactor,gc_lambda_a,gc_lambda_r,gc_sigma,gc_epsilon,gc_epsilon_assoc,gc_bondvol)
     vrparams = SAFTVRMieParam(mw,segment,sigma,lambda_a,lambda_r,epsilon,comp_epsilon_assoc,comp_bondvol)
-    
+
     idmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
-    
+
     vr = SAFTVRMie(vrparams, comp_sites, idmodel; ideal_userlocations, verbose, assoc_options)
     γmierefs = ["10.1063/1.4851455", "10.1021/je500248h"]
     gmie = SAFTgammaMie(components,groups,sites,gcparams,idmodel,vr,assoc_options,γmierefs)
@@ -187,7 +183,7 @@ function recombine_impl!(model::SAFTgammaMieModel)
     comp_sites = gc_to_comp_sites(sites,groups)
     comp_bondvol = gc_to_comp_sites(gc_bondvol,comp_sites)
     comp_epsilon_assoc = gc_to_comp_sites(gc_epsilon_assoc,comp_sites)
-    
+
     model.vrmodel.params.bondvol.values.values[:] = comp_bondvol.values.values
     model.vrmodel.params.epsilon_assoc.values.values[:] = comp_epsilon_assoc.values.values
     return model

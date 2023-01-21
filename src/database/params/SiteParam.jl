@@ -12,22 +12,22 @@ It has the following fields:
 * `i_flattenedsites`: an iterator that goes through the indices for each flattened site
 Let's explore the sites in a 3-component `SAFTGammaMie` model:
 ```julia
-julia> model3 = SAFTgammaMie([    
+julia> model3 = SAFTgammaMie([
                 "ethanol",
-                ("nonadecanol", ["CH3"=>1, "CH2"=>18, "OH"=>1]),     
+                ("nonadecanol", ["CH3"=>1, "CH2"=>18, "OH"=>1]),
                 ("ibuprofen", ["CH3"=>3, "COOH"=>1, "aCCH"=>1, "aCCH2"=>1, "aCH"=>4])
                                ])
 SAFTgammaMie{BasicIdeal} with 3 components:
  "ethanol"
  "nonadecanol"
  "ibuprofen"
-Contains parameters: segment, shapefactor, lambda_a, lambda_r, sigma, epsilon, epsilon_assoc, bondvol 
+Contains parameters: segment, shapefactor, lambda_a, lambda_r, sigma, epsilon, epsilon_assoc, bondvol
 julia> model3.sites
 SiteParam with 8 sites:
- "CH2OH": "H" => 1, "e1" => 2     
+ "CH2OH": "H" => 1, "e1" => 2
  "CH3": (no sites)
  "CH2": (no sites)
- "OH": "H" => 1, "e1" => 2        
+ "OH": "H" => 1, "e1" => 2
  "COOH": "e2" => 2, "H" => 1, "e1" => 2
  "aCCH": (no sites)
  "aCCH2": (no sites)
@@ -37,7 +37,7 @@ julia> model3.sites.flattenedsites
  "H"
  "e1"
  "e2"
-julia> model3.sites.i_sites       
+julia> model3.sites.i_sites
 8-element Vector{Vector{Int64}}:
  [1, 2]
  []
@@ -47,7 +47,7 @@ julia> model3.sites.i_sites
  []
  []
  []
-julia> model3.sites.n_sites       
+julia> model3.sites.n_sites
 8-element Vector{Vector{Int64}}:
  [1, 2]
  []
@@ -76,16 +76,16 @@ end
 
 function SiteParam(components::Vector{String},sites::Array{Array{String,1},1},n_sites::Vector{Vector{Int}},sourcecsvs = String[],site_translator = nothing)
     n_sites = PackedVectorsOfVectors.pack(n_sites)
-    param = SiteParam(components, 
-    sites, 
+    param = SiteParam(components,
+    sites,
     n_sites,
-    Vector{Vector{Int}}(undef,0), 
+    Vector{Vector{Int}}(undef,0),
     String[],
     Vector{Vector{Int}}(undef,0),
     Vector{Vector{Int}}(undef,0),
     sourcecsvs,
     site_translator)
-        
+
     recombine!(param)
     return param
 end
@@ -117,7 +117,7 @@ function SiteParam(pairs::Dict{String,SingleParam{Int}},allcomponentsites)
     ncomps = length(components)
     sourcecsvs = String[]
     for x in values(pairs)
-        append!(sourcecsvs,x.sourcecsvs)  
+        append!(sourcecsvs,x.sourcecsvs)
     end
     unique!(sourcecsvs)
 
@@ -155,7 +155,7 @@ function recombine!(param::SiteParam)
 
     #initialization of flattenedsites
     #flattenedsites = unique!(reduce(vcat,sites))
-    
+
     flattenedsites = param.flattenedsites
     resize!(flattenedsites,0)
     for site ∈ sites
@@ -184,10 +184,10 @@ function recombine!(param::SiteParam)
     flat𝕊 = length(flattenedsites)
     n_flattenedsites = param.n_flattenedsites
     i_flattenedsites = param.i_flattenedsites
-    
+
     resize!(n_flattenedsites,ℂ)
     resize!(i_flattenedsites,ℂ)
-    
+
     for i in 1:ℂ
         if !isassigned(n_flattenedsites,i)
             n_flattenedsites[i] = Int[]
@@ -244,3 +244,103 @@ function get_group_idx(param::SiteParam,i,j,a,b)
   return k,l
 end
 
+function gc_to_comp_sites(sites::SiteParam,groups::GroupParameter)
+    #given some groups and some sites calculated over those groups
+    #calculates "flattened" sites
+
+    comps = groups.components #component names
+
+    #each GC/GCsite pair encodes a tuple in GC space
+    #we use this traslator later to convert any assoc param into it's component equivalent
+    site_translator = Vector{Vector{Tuple{Int,Int}}}(undef,length(comps))
+
+    #shortcut for non-assoc case
+    if length(sites.n_sites.v) == 0
+        new_sites = SiteParam(groups.components)
+        return new_sites
+    end
+
+    sitenames = deepcopy(sites.sites) #group sites
+    gcnames = groups.flattenedgroups #group names
+    gc_groups = groups.groups
+    #with this, each site now has an unique name
+    for i in 1:length(sitenames)
+        gci = gcnames[i]
+        sitei = sitenames[i]
+        for a in 1:length(sitei)
+            sitei[a] = gci * '/' * sitei[a]
+        end
+    end
+
+    #now we fill our new component sites,
+    gc_n_sites = sites.n_sites.v #should be of the same size as flattened_comp_sitenames
+    comp_n_sites = Vector{Vector{Int}}(undef,length(comps))
+    comp_sites = Vector{Vector{String}}(undef,length(comps))
+
+
+    for i in 1:length(comps)
+        n_sites_i = Int[]
+        comp_n_sites[i] = n_sites_i
+
+        sites_i = String[]
+        comp_sites[i] = sites_i
+        site_translator_i = NTuple{2,Int}[]
+        site_translator[i] = site_translator_i
+        gc_name_i = gc_groups[i]
+        for k in 1:length(gc_name_i)
+            for (w,comp_gcname) in enumerate(Iterators.flatten(sitenames))
+                gcname_ik = gc_name_i[k]
+                lookup_cgname = gcname_ik * '/'
+                if startswith(comp_gcname,lookup_cgname)
+                    #fill sites, n_sites
+                    push!(sites_i,comp_gcname)
+                    push!(n_sites_i,gc_n_sites[w])
+
+                    #fill translation between gc_gcsite combination and original indices for assoc
+                    gc_ik = findfirst(isequal(gcname_ik),groups.flattenedgroups)
+                    push!(site_translator_i,(gc_ik,length(n_sites_i)))
+                end
+            end
+        end
+    end
+    new_sites = SiteParam(comps,comp_sites,comp_n_sites,sites.sourcecsvs,site_translator)
+
+    return new_sites
+end
+
+
+function gc_to_comp_sites(param::AssocParam,sites::SiteParam)
+
+    #shortcut for non-assoc case
+    if length(sites.n_sites.v) == 0
+        new_val = Compressed4DMatrix{eltype(param)}()
+        return AssocParam(param.name,sites.components,new_val,sites.sites,param.sourcecsvs,param.sources)
+    end
+    site_translator = sites.site_translator
+    new_val = assoc_similar(sites,eltype(param))
+    for i in 1:length(sites.components)
+        site_translator_i = site_translator[i]
+        for j in 1:i
+            ij_pair = new_val[i,j]
+            #display(TextDisplay(stdout),MIME"text/plain"(),ij_pair)
+            site_translator_j = site_translator[j]
+            aa,bb = length(site_translator_i),length(site_translator_j)
+            for a in 1:length(site_translator_i)
+                i_gc,a_gc = site_translator_i[a]
+                for b in 1:length(site_translator_j)
+                    j_gc,b_gc = site_translator_j[b]
+                    #absolute index, relative to the Compressed4DMatrix
+                    idx = validindex(ij_pair,a,b)
+                    if idx != 0 #if the index is valid
+                        ijab_val = param[i_gc,j_gc][a_gc,b_gc]
+                        if !_iszero(ijab_val) #if the value is not zero
+                            ij_pair.vec.values[idx] =ijab_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+    dropzeros!(new_val) #clean all zero values
+    return AssocParam(param.name,sites.components,new_val,sites.sites,param.sourcecsvs,param.sources)
+end

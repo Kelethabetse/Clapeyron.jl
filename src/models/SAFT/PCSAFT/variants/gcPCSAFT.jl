@@ -21,7 +21,7 @@ end
 
 """
     gcPCSAFTModel <: PCSAFTModel
-    gcPCSAFT(components; 
+    gcPCSAFT(components;
     idealmodel=BasicIdeal,
     userlocations=String[],
     ideal_userlocations=String[],
@@ -62,9 +62,9 @@ function gcPCSAFT(components;
 
     groups = StructGroupParam(components, ["SAFT/PCSAFT/gcPCSAFT/gcPCSAFT_groups.csv","SAFT/PCSAFT/gcPCSAFT/gcPCSAFT_intragroups.csv"])
     params,sites = getparams(groups, ["SAFT/PCSAFT/gcPCSAFT","properties/molarmass_groups.csv"]; userlocations=userlocations, verbose=verbose)
-    
+
     components = groups.components
-    
+
     segment = params["segment"]
     k = get(params,"k",nothing)
     Mw = params["Mw"]
@@ -102,18 +102,11 @@ end
 
 function data(model::gcPCSAFTModel,V,T,z)
     ncomponents = length(model)
-
     _d = @f(d)
     ζ0,ζ1,ζ2,ζ3 = @f(ζ0123,_d)
-
     mk = model.params.segment.values
     nk = model.groups.n_flattenedgroups
-    m = zero(first(z))*zeros(ncomponents)
-
-    for i in @comps
-        m[i] = sum(nk[i].*mk)
-    end
-
+    m = [dot(nki,mk) for nki ∈ nk] 
     m̄ = dot(z, m)/sum(z)
     return (_d,ζ0,ζ1,ζ2,ζ3,m̄)
 end
@@ -137,7 +130,7 @@ function a_hc(model::gcPCSAFTModel, V, T, z,_data=@f(data))
             g_hs[k,l] = c1 + dₖ*dₗ/(dₖ+dₗ)*c2 + (dₖ*dₗ/(dₖ+dₗ))^2*c3
         end
     end
-    
+
     res = zero(V+T+first(z))
     n = model.groups.n_intergroups
     for i ∈ @comps
@@ -189,7 +182,7 @@ end
 
 function d(model::gcPCSAFTModel, V, T, z)
     ϵᵢᵢ = diagvalues(model.params.epsilon)
-    σᵢᵢ = diagvalues(model.params.sigma) 
+    σᵢᵢ = diagvalues(model.params.sigma)
     return σᵢᵢ .* (1 .- 0.12 .* exp.(-3ϵᵢᵢ ./ T))
 end
 
@@ -225,7 +218,7 @@ function Δ(model::gcPCSAFTModel, V, T, z, i, j, a, b,_data=@f(data))
     _0 = zero(V+T+first(z))
     ϵ_assoc = model.params.epsilon_assoc.values
     κ = model.params.bondvol.values
-    κijab = κ[i,j][a,b] 
+    κijab = κ[i,j][a,b]
     iszero(κijab) && return _0
     σ = model.params.sigma.values
     k,l = get_group_idx(model,i,j,a,b)

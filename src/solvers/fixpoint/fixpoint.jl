@@ -58,10 +58,11 @@ function fixpoint(f,x0,
     atol=zero(eltype(x0)),
     rtol=8eps(one(eltype(x0))), 
     max_iters=100,
-    return_last = false)
+    return_last = false,
+    inplace = false)
     _,atol,rtol = promote(one(eltype(x0)),atol,rtol)
     method = promote_method(method,eltype(x0))
-    return _fixpoint(f,x0,method,atol,rtol,max_iters,return_last)
+    return _fixpoint(f,x0,method,atol,rtol,max_iters,return_last,inplace)
 end
 
 function _fixpoint(f::F,
@@ -70,7 +71,8 @@ function _fixpoint(f::F,
     atol::T = zero(T),
     rtol::T =8*eps(T),
     max_iters=100,
-    return_last = false) where {F,T<:Real}
+    return_last = false,
+    inplace = false) where {F,T<:Real}
     
     nan = (0*atol)/(0*atol)
     xi = f(x0)
@@ -95,7 +97,8 @@ function _fixpoint(f::F,
     atol::T = zero(T),
     rtol::T =8*eps(T),
     max_iters=100,
-    return_last = false) where {F,T<:Real}
+    return_last = false,
+    inplace = false) where {F,T<:Real}
 
     nan = (0*atol)/(0*atol)
     itercount = 2
@@ -128,16 +131,31 @@ function _fixpoint(f::F,
     return ifelse(return_last,x2,nan)
 end
 
+function swap!(x,y)
+    for i in eachindex(x)
+        xi,yi = x[i],y[i]
+        y[i] = xi
+        x[i] = yi
+    end
+    return x,y
+end
+
 function _fixpoint(f!::F,
     x0::X where {X <:AbstractVector{T}},
     method::SSFixPoint,
     atol::T = zero(T),
     rtol::T =8*eps(T),
     max_iters=100,
-    return_last = false) where {F,T<:Real}
+    return_last = false,
+    inplace = false) where {F,T<:Real}
     
     nan = (0*atol)/(0*atol)
-    xi = copy(x0)
+    if inplace isa Bool #hacks!. we save an argument here.
+        xi = copy(x0)
+    else
+        xi = inplace
+        inplace = true
+    end
     xi = f!(xi,x0)
     converged,finite = convergence(x0,xi,atol,rtol)
     if converged
@@ -150,7 +168,15 @@ function _fixpoint(f!::F,
     end
     itercount = 1
     α = method.dampingfactor
-    xold = copy(x0)
+    
+    if inplace
+        xi,xold = swap!(x0,xi) 
+        #our initial x0 now its our latest point
+        #whereas the storage created for xi is used for xold
+    else
+        xold = copy(x0)
+    end
+
     while itercount < max_iters
         xi = f!(xi,xold)
         xi .*= α
@@ -169,4 +195,5 @@ function _fixpoint(f!::F,
     end
     !return_last && (xi .= nan)
     return xi
+    
 end

@@ -122,7 +122,12 @@ function a_assoc(model::SAFTgammaMieModel, V, T, z,_data = @f(data))
     return a_assoc(model.vrmodel,V,T,z,vrdata)
 end
 
+assoc_similar(model::SAFTgammaMieModel,::Type{𝕋}) where 𝕋 = assoc_similar(model.vrmodel,𝕋)
 
+function I(model::SAFTgammaMieModel, V, T, z,TR,_data = @f(data))
+    _,_,vrdata = _data
+    return I(model.vrmodel,V,T,z,TR,vrdata)
+end
 
 const SAFTγMieconsts =(
     A = SA[ 0.81096    1.7888   -37.578   92.284;

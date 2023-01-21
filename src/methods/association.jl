@@ -188,10 +188,10 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
 
     _ii::Vector{Tuple{Int,Int}} = delta.outer_indices
     _aa::Vector{Tuple{Int,Int}} = delta.inner_indices
+    @show _ii
     _idx = 1:length(_ii)
     _Δ= delta.values
     TT = eltype(_Δ)
-
     _n = model.sites.n_sites.v
 
     nn = length(_n)
@@ -201,7 +201,7 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
     combining = options.combining
     runtime_combining = combining ∈ (:elliott_runtime,:esd_runtime)
 
-    @inbounds for i ∈ 1:length(z) #for i ∈ comps
+    for i ∈ 1:length(z) #for i ∈ comps
         sitesᵢ = 1:(p[i+1] - p[i]) #sites are normalized, with independent indices for each component
         for a ∈ sitesᵢ #for a ∈ sites(comps(i))
             ia = compute_index(p,i,a)
@@ -214,6 +214,7 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
                     jb = compute_index(p,j,b)
                     njb = _n[jb]
                     count += 1
+                    @show ij,j
                     K[ia,jb]  = ρ*njb*z[j]*_Δ[idx]
                 end
             end
@@ -326,7 +327,8 @@ julia> x = Clapeyron.assoc_fractions(model,2.6e-5,300.15,[0.3,0.3,0.4]) #you can
 """
 function X(model::EoSModel, V, T, z,data = nothing)
     nn = assoc_pair_length(model)
-    isone(nn) && return X_exact1(model,V,T,z,data)
+    Xsol = zeros(eltype(V+T+first(z)),length(model.sites.n_sites.v))
+    isone(nn) && return X_exact1(model,V,T,z,data,Xsol)
     options = assoc_options(model)
     if options.dense
         K = dense_assoc_site_matrix(model,V,T,z,data)
@@ -334,32 +336,44 @@ function X(model::EoSModel, V, T, z,data = nothing)
         K = sparse_assoc_site_matrix(model,V,T,z,data)
     end
     idxs = model.sites.n_sites.p
-    Xsol = assoc_matrix_solve(K,options)
+    Xsol = assoc_matrix_solve!(Xsol,K,options)
     return PackedVofV(idxs,Xsol)
 end
 
+assoc_matrix_solve(K) = assoc_matrix_solve(K,AssocOptions())
+
 function assoc_matrix_solve(K,options::AssocOptions)
+    X0 = zeros(eltype(K),LinearAlgebra.checksquare(K))
+    return assoc_matrix_solve!(X0,K,options)
+end
+
+assoc_matrix_solve!(res,K) = assoc_matrix_solve!(res,K,AssocOptions())
+
+function assoc_matrix_solve!(res,K,options::AssocOptions)
     atol = options.atol
     rtol = options.rtol
     max_iters = options.max_iters
     α = options.dampingfactor
-    return assoc_matrix_solve(K, α, atol ,rtol, max_iters)
+    return assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters)
 end
 
 #TODO: define implicit AD here
-function assoc_matrix_solve(K, α, atol ,rtol, max_iters)
-    n = LinearAlgebra.checksquare(K) #size
+function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res),subset = nothing)
     #initialization procedure:
     Kmin,Kmax = nonzero_extrema(K) #look for 0 < Amin < Amax
+    if Kmin < 0
+        Kmin = zero(Kmin)/zero(Kmin)
+    end
     if Kmax > 1
         f = true/Kmin
     else
         f = true-Kmin
     end
-    X0 = fill(f,n) #initial point
+
+    X0 = fill!(res,f) #initial point
     
-    #
-    #
+    isnan(Kmin) && return X0
+
     #=
     function to solve
     find vector x that satisfies:
@@ -367,6 +381,55 @@ function assoc_matrix_solve(K, α, atol ,rtol, max_iters)
     solved by reformulating in succesive substitution:
     x .= 1 ./ (1 .+ A*x)
     =#
+
+    if length(res) == 1
+        #A is a 1x1 mat
+        #=
+        A*x*x + x - 1 = 0
+        x = (-1 + sqrt(1 + 4A))/2A
+        =#
+        K₁ = only(K)
+        X0[1] = (-1 + sqrt(1 + 4*K₁))/(2*K₁)
+        return X0
+    end
+
+    inplace = cache
+
+    if length(res) == 2
+        K1,K2,K3,K4 = K
+        if iszero(K1) && iszero(K4) #classical assoc, 2 sites with no self-site assoc
+            #=
+            K2*X2*X1 + X1 - 1 = 0
+            K3*X1*X2 + X2 - 1 = 0
+
+            X2 = (1 - X1)/(X1*K2)
+            (K3/K2)*(1 - X1) + (1 - X1)/(X1*K2) - 1 = 0
+            K3*(1 - X1) + (1 - X1)/X1 - K2 = 0
+            K3*X1 - K3*X1*X1 + 1 - X1 - K2*X1 = 0
+            - K3*X1*X1 + (K3 - 1 - K2)*X1 + 1 = 0
+            this is the same eq used in X_exact1, but that function skips allocating the matrix K.
+            =#
+            _a = K3
+            _b = -K3 + 1 + K2
+            _c = -1
+            x1 = -2*_c/(_b + sqrt(_b*_b - 4*_a*_c)) #more stable quadratic solution
+            x2 =  (1 - x1)/(x1*K2)
+            res[1] = x1
+            res[2] = x2
+            return res
+        end
+    end
+
+    n0 = 1
+    n1 = 1
+    n_max = length(res)
+    if subset !== nothing
+        while n_max < n_max
+        
+        end
+    
+    end
+    
     function fX(out,in)
         mul!(out,K,in)
         for i in 1:length(out)
@@ -375,13 +438,16 @@ function assoc_matrix_solve(K, α, atol ,rtol, max_iters)
         end
         return out
     end
-
+    
     #successive substitution until convergence
-    return Solvers.fixpoint(fX,X0,Solvers.SSFixPoint(α),atol=atol,rtol = rtol,max_iters = max_iters)
+    X = Solvers.fixpoint(fX,X0,Solvers.SSFixPoint(α),atol=atol,rtol = rtol,max_iters = max_iters,inplace = inplace)
+    return X
 end
 
-#exact calculation of site non-bonded fraction when there is only one site
-function X_exact1(model,V,T,z,data=nothing)
+#exact calculation of site non-bonded fraction when there is only one site pair
+#there could be two sites, or only one site interacting with itself
+
+function X_exact1(model,V,T,z,data=nothing,Xsol = zeros(eltype(V+T+first(z)),length(model.sites.n_sites.v)))
     κ = model.params.bondvol.values
     i,j = κ.outer_indices[1]
     a,b = κ.inner_indices[1]
@@ -393,8 +459,6 @@ function X_exact1(model,V,T,z,data=nothing)
     end
     _1 = one(eltype(_Δ))
     idxs = model.sites.n_sites.p
-    n = length(model.sites.n_sites.v)
-    Xsol = fill(_1,n)
     _X = PackedVofV(idxs,Xsol)
     ρ = N_A/V
     zi = z[i]
@@ -407,17 +471,17 @@ function X_exact1(model,V,T,z,data=nothing)
     kia = na*zi*ρ*_Δ
     kjb = nb*zj*ρ*_Δ
     #kia*x*x + x(kjb-kia+1) - 1 = 0
-    _a = kia
+    _a = kia 
     _b = _1 -kia + kjb
     _c = -_1
-    xia = -2*_c/(_b + sqrt(_b*_b - 4*_a*_c))
+    xia = -2*_c/(_b + sqrt(_b*_b - 4*_a*_c)) #more stable quadratic solution
     xjb = _1/(1+kia*xia)
     _X[j][b] = xjb
     _X[i][a] = xia
     return _X
 end
 
-function a_assoc_impl(model::Union{SAFTModel,CPAModel}, V, T, z,X_)
+function a_assoc_impl(model, V, T, z,X_)
     _0 = zero(first(X_.v))
     n = model.sites.n_sites
     res = _0
