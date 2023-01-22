@@ -1,4 +1,4 @@
-function a_assoc(model::EoSModel, V, T, z,data=nothing)
+function a_assoc(model, V, T, z,data=nothing)
     _0 = zero(V+T+first(z))
     nn = assoc_pair_length(model)
     iszero(nn) && return _0
@@ -188,12 +188,10 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
 
     _ii::Vector{Tuple{Int,Int}} = delta.outer_indices
     _aa::Vector{Tuple{Int,Int}} = delta.inner_indices
-    @show _ii
     _idx = 1:length(_ii)
     _Δ= delta.values
     TT = eltype(_Δ)
     _n = model.sites.n_sites.v
-
     nn = length(_n)
     K  = zeros(TT,nn,nn)
     count = 0
@@ -214,7 +212,6 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
                     jb = compute_index(p,j,b)
                     njb = _n[jb]
                     count += 1
-                    @show ij,j
                     K[ia,jb]  = ρ*njb*z[j]*_Δ[idx]
                 end
             end
