@@ -122,7 +122,17 @@ function a_assoc(model::SAFTgammaMieModel, V, T, z,_data = @f(data))
     return a_assoc(model.vrmodel,V,T,z,vrdata)
 end
 
+#those functions are there in case we want direct access to the underlying non-bonded fractions.
 assoc_similar(model::SAFTgammaMieModel,::Type{𝕋}) where 𝕋 = assoc_similar(model.vrmodel,𝕋)
+
+function assoc_site_matrix(model::SAFTgammaMieModel,V,T,z,data = nothing)
+    if data !== nothing
+        _,_,vrdata = data
+    else
+        vrdata = nothing
+    end
+    return assoc_site_matrix(model.vrmodel,V,T,z,vrdata)
+end
 
 function I(model::SAFTgammaMieModel, V, T, z,TR,_data = @f(data))
     _,_,vrdata = _data
