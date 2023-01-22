@@ -324,23 +324,26 @@ julia> x = Clapeyron.assoc_fractions(model,2.6e-5,300.15,[0.3,0.3,0.4]) #you can
 """
 function X(model::EoSModel, V, T, z,data = nothing)
     nn = assoc_pair_length(model)
-    Xsol = zeros(eltype(V+T+first(z)),length(model.sites.n_sites.v))
-    isone(nn) && return X_exact1(model,V,T,z,data,Xsol)
+    _Xv = zeros(eltype(V+T+first(z)),length(model.sites.n_sites.v))
+    idxs = model.sites.n_sites.p
+    Xsol = PackedVofV(idxs,_Xv)
+    isone(nn) && return X_exact1(model,V,T,z,data,_Xv)
     options = assoc_options(model)
     if options.dense
         K = dense_assoc_site_matrix(model,V,T,z,data)
     else sparse_assoc_site_matrix
         K = sparse_assoc_site_matrix(model,V,T,z,data)
     end
-    idxs = model.sites.n_sites.p
-    Xsol = assoc_matrix_solve!(Xsol,K,options)
-    return PackedVofV(idxs,Xsol)
+    assoc_matrix_x0!(Xsol,K)
+    assoc_matrix_solve!(Xsol,K,options)
+    return Xsol
 end
 
 assoc_matrix_solve(K) = assoc_matrix_solve(K,AssocOptions())
 
 function assoc_matrix_solve(K,options::AssocOptions)
     X0 = zeros(eltype(K),LinearAlgebra.checksquare(K))
+    assoc_matrix_x0!(X0,K)
     return assoc_matrix_solve!(X0,K,options)
 end
 
@@ -354,43 +357,67 @@ function assoc_matrix_solve!(res,K,options::AssocOptions)
     return assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters)
 end
 
-#TODO: define implicit AD here
-function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res),subset = nothing)
-    #initialization procedure:
-    Kmin,Kmax = nonzero_extrema(K) #look for 0 < Amin < Amax
-    if Kmin < 0
-        Kmin = zero(Kmin)/zero(Kmin)
-    end
-    if Kmax > 1
-        f = true/Kmin
+function assoc_matrix_x0!(res::AbstractVector,K)
+    #this is a crude aproximation, but it seems to work on most cases.
+    #when the norm of the assoc matrix K is high,we are in a liquid like phase.
+    #on the other part, a low norm(K) indicates a gas phase.
+    k_norm = norm(K)
+    if k_norm > 1
+        f = true/k_norm
     else
-        f = true-Kmin
+        f = true-k_norm
     end
+    fill!(res,f)
+    return res
+end
 
-    X0 = fill!(res,f) #initial point
-    
-    isnan(Kmin) && return X0
+function assoc_matrix_x0!(res::PackedVofV,K)
+    for i in 1:length(res)
+        x_i = res[i]
+        idx_i = res.p[i]:res.p[i+1]-1
+        length(idx_i) == 0 && continue
+        K_i = @view K[idx_i,idx_i]
+        if length(x_i) <= 2
+            assoc_matrix_solve!(x_i, K_i, NaN, NaN ,NaN, 0,nothing) #should solve analytically
+        else
+            assoc_matrix_x0!(x_i,K_i)
+        end
+    end
+    return res
+end
 
+
+
+function assoc_matrix_solve!(res::PackedVofV, K, α, atol ,rtol, max_iters,cache = copy(res.v))
+    assoc_matrix_solve!(res.v, K, α, atol ,rtol, max_iters,cache)
+    return res
+end
+
+function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res))
+    any(isnan,res) && return res
     #=
     function to solve
     find vector x that satisfies:
-    (A*x .* x) + x - 1 = 0
+    A*x .* x + x .- 1 = 0
     solved by reformulating in succesive substitution:
     x .= 1 ./ (1 .+ A*x)
     =#
-
     if length(res) == 1
         #A is a 1x1 mat
         #=
         A*x*x + x - 1 = 0
-        x = (-1 + sqrt(1 + 4A))/2A
+        x = (-1 + sqrt(1 + 4A))/2A, A > 0
+        x = 1,  A = 0
         =#
         K₁ = only(K)
-        X0[1] = (-1 + sqrt(1 + 4*K₁))/(2*K₁)
-        return X0
+        res[1] = (-1 + sqrt(1 + 4*K₁))/(2*K₁)
+        if iszero(K₁) #in case of assymetric solvation and a partial solver, can occur this
+            res[1] = one(K₁)
+        else
+            (-1 + sqrt(1 + 4*K₁))/(2*K₁)
+        end
+        return res
     end
-
-    inplace = cache
 
     if length(res) == 2
         K1,K2,K3,K4 = K
@@ -416,17 +443,7 @@ function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res)
             return res
         end
     end
-
-    n0 = 1
-    n1 = 1
-    n_max = length(res)
-    if subset !== nothing
-        while n_max < n_max
-        
-        end
-    
-    end
-    
+   
     function fX(out,in)
         mul!(out,K,in)
         for i in 1:length(out)
@@ -435,11 +452,14 @@ function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res)
         end
         return out
     end
-    
+    inplace = cache
     #successive substitution until convergence
-    X = Solvers.fixpoint(fX,X0,Solvers.SSFixPoint(α),atol=atol,rtol = rtol,max_iters = max_iters,inplace = inplace)
+    X = Solvers.fixpoint(fX,res,Solvers.SSFixPoint(α),atol=atol,rtol = rtol,max_iters = max_iters,inplace = inplace)
     return X
 end
+
+_assoc_res(A,x) = A*x .* x + x .- 1
+_assoc_res(A,x::PackedVofV) = _assoc_res(A,x.v)
 
 #exact calculation of site non-bonded fraction when there is only one site pair
 #there could be two sites, or only one site interacting with itself
