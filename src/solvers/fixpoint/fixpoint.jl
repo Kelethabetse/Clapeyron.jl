@@ -47,7 +47,7 @@ function convergence(xold,xi,atol,rtol)
         Δx = norm((xi[i] - xold[i] for i in eachindex(xold,xi)))
     end
     normxi = norm(xi)
-    if abs(Δx) < max(atol,normxi*rtol)
+    if abs(Δx) <= max(atol,normxi*rtol)
         return (true,true) #terminate, with current number
     end
     return (false,false) #keep iterating
