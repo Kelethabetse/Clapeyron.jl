@@ -28,6 +28,7 @@ the combining option controls the type of combining rule applied to the associat
     dampingfactor::Float64 = 0.5
     combining::Symbol = :nocombining
     dense::Bool = true
+    x0::Symbol = :auto
 end
 
 is_splittable(::AssocOptions) = false

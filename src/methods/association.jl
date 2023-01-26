@@ -227,6 +227,7 @@ function dense_assoc_site_matrix(model,V,T,z,data=nothing)
                     j,b = inverse_index(p,jb)
                     njb = _n[jb]
                     Δijab = sqrt(delta[i,i][a,b] * delta[j,j][a,b]) #elliott rule
+                    #we do this because in AD, d/dx(sqrt) = 1/2*sqrt, that returns NaN at zero.
                     if !iszero(Δijab)
                         K[ia,jb]  = ρ*njb*z[j]*Δijab
                         K[jb,ia]  = ρ*nia*z[i]*Δijab
@@ -328,13 +329,14 @@ function X(model::EoSModel, V, T, z,data = nothing)
     idxs = model.sites.n_sites.p
     Xsol = PackedVofV(idxs,_Xv)
     isone(nn) && return X_exact1(model,V,T,z,data,_Xv)
+
     options = assoc_options(model)
     if options.dense
         K = dense_assoc_site_matrix(model,V,T,z,data)
     else sparse_assoc_site_matrix
         K = sparse_assoc_site_matrix(model,V,T,z,data)
     end
-    assoc_matrix_x0!(Xsol,K)
+    assoc_matrix_x0!(Xsol,K,options.x0) 
     assoc_matrix_solve!(Xsol,K,options)
     return Xsol
 end
@@ -343,7 +345,7 @@ assoc_matrix_solve(K) = assoc_matrix_solve(K,AssocOptions())
 
 function assoc_matrix_solve(K,options::AssocOptions)
     X0 = zeros(eltype(K),LinearAlgebra.checksquare(K))
-    assoc_matrix_x0!(X0,K)
+    assoc_matrix_x0!(X0,K,options.x0)
     return assoc_matrix_solve!(X0,K,options)
 end
 
@@ -357,36 +359,72 @@ function assoc_matrix_solve!(res,K,options::AssocOptions)
     return assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters)
 end
 
-function assoc_matrix_x0!(res::AbstractVector,K)
-    #this is a crude aproximation, but it seems to work on most cases.
+function assoc_matrix_x0!(res::AbstractVector,K,x0::Symbol = :auto)
+    #=
     #when the norm of the assoc matrix K is high,we are in a liquid like phase.
     #on the other part, a low norm(K) indicates a gas phase.
-    k_norm = norm(K)
-    if k_norm > 1
-        f = true/k_norm
+    
+    this is some hand-wavy math, but seems to reinforce that point
+    A*x .* x + x .- 1 = 0 # A -> a = rms(A), x -> xᵢ
+    ax^2 + x - 1 = 0 
+    x = -1/2a + sqrt(1/4a^2 + 1/a) # a' = 1/2a
+    x = -a' + sqrt(a'^2 + 2a') 
+    
+    we want to start from a higher bound. quadratic matrix equations always have guaranteed convergence 
+    when x0 > x. in this case, we use the aproximation:
+    # sqrt(a + b) < sqrt(a) + sqrt(b)
+    then:
+    x0 ≈ -a' + a' + sqrt(2a')
+    x0 ≈ sqrt(1/a)
+    =#
+    
+    if x0 == :ones
+        res .= true
     else
-        f = true-k_norm
+        ∑k = zero(eltype(K))
+        n = 0
+        for ki in K
+            if !iszero(ki)
+                ∑k += ki*ki
+                n +=1
+            end
+        end
+        k̄ = sqrt(∑k/n)
+        #those are heuristics thas should give a good initial value, such as Xsol < X0 < 1
+        k1 = (-1 + sqrt(1 + 4*k̄))/(2*k̄) # mean solution
+        k2 = sqrt(1/k̄) #sqrt solution aproximation, k2 > 1/k_norm for all k_norm > 1
+        k0 = max(k1,k2)
+        k = min(one(k0),k0)
+        fill!(res,k)
     end
-    fill!(res,f)
     return res
 end
 
-function assoc_matrix_x0!(res::PackedVofV,K)
-    for i in 1:length(res)
-        x_i = res[i]
-        idx_i = res.p[i]:res.p[i+1]-1
-        length(idx_i) == 0 && continue
-        K_i = @view K[idx_i,idx_i]
-        if length(x_i) <= 2
-            assoc_matrix_solve!(x_i, K_i, NaN, NaN ,NaN, 0,nothing) #should solve analytically
-        else
-            assoc_matrix_x0!(x_i,K_i)
+function assoc_matrix_x0!(res::PackedVofV,K,x0::Symbol = :auto)
+    
+    #if we have information for the indices of each site,
+    # we can solve for each submatrix, to obtain the pures.
+    
+    assoc_matrix_x0!(res.v, K, x0) #fill all the values with our generalized guess
+    kmax = res.v[1] #store
+    if x0 == :auto
+        for i in 1:length(res)
+            x_i = res[i]
+            idx_i = res.p[i]:res.p[i+1]-1
+            length(idx_i) == 0 && continue
+            K_i = @view K[idx_i,idx_i]
+            if length(x_i) <= 2
+                assoc_matrix_solve!(x_i, K_i, NaN, NaN ,NaN, 0, nothing) #should solve analytically
+            end
+        end
+    end
+    for i in eachindex(res.v)
+        if res.v[i] < kmax
+            res.v[i] = kmax
         end
     end
     return res
 end
-
-
 
 function assoc_matrix_solve!(res::PackedVofV, K, α, atol ,rtol, max_iters,cache = copy(res.v))
     assoc_matrix_solve!(res.v, K, α, atol ,rtol, max_iters,cache)
@@ -431,7 +469,8 @@ function assoc_matrix_solve!(res, K, α, atol ,rtol, max_iters,cache = copy(res)
             K3*(1 - X1) + (1 - X1)/X1 - K2 = 0
             K3*X1 - K3*X1*X1 + 1 - X1 - K2*X1 = 0
             - K3*X1*X1 + (K3 - 1 - K2)*X1 + 1 = 0
-            this is the same eq used in X_exact1, but that function skips allocating the matrix K.
+            this is the same eq used in X_exact
+            #but that function skips allocating the matrix K, and the assoc strength vector
             =#
             _a = K3
             _b = -K3 + 1 + K2
