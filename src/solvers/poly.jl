@@ -24,6 +24,14 @@ f = muladd(a,b,-t) #ab - cd
 return f-e  #ab - cd + cd - cd
 end
 
+"""
+    solve_cubic_eq(poly)
+
+Solves the cubic equation `ax3 + bx2 + cx2 + d = 0`, where `a,b,c,d = poly`.
+
+"""
+function solve_cubic_eq end
+
 function solve_cubic_eq(poly::AbstractVector{T}) where {T<:Real}
 tup = (poly[1],poly[2],poly[3],poly[4])
 return solve_cubic_eq(tup)
