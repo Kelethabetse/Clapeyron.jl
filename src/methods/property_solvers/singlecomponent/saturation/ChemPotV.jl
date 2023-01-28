@@ -99,13 +99,19 @@ function saturation_pressure_impl(model::EoSModel, T, method::ChemPotVSaturation
         crit = crit_pure(model)
     end
     T_c, p_c, V_c = crit
-    if abs(T_c-T) < eps(typeof(T))
+
+    #infinitesimally close to the critical point
+    ε_T = eps(typeof(T))
+    if abs(T_c-T) < ε_T
         return (p_c,V_c,V_c)
     end
-        #@error "initial temperature $T greater than critical temperature $T_c. returning NaN"
-    if T < T_c
-        x0 = x0_sat_pure_crit(model,T,T_c,p_c,V_c)
-        V01,V02 = x0
+    Tr = T/T_c
+    #over the critical point
+    Tr > 1 && return fail
+    
+    if Tr > 0.95 #near critical point
+        model_crit = ExtrapolatedCritical(model,crit)
+        V01,V02 = x0_sat_pure(model_crit,T)
         V0 = vec2(log(V01),log(V02),T)
         result,converged = sat_pure(f!,V0,method)
         if converged
@@ -135,6 +141,9 @@ function (f::ObjSatPure)(F,x)
     T = f.Tsat
     return Obj_Sat(model, F, T, exp(x[1]), exp(x[2]),scales)
 end
+
+
+#=
 #with the critical point, we can perform a
 #corresponding states approximation with the
 #propane reference equation of state
@@ -155,7 +164,7 @@ function x0_sat_pure_crit(model,T,T_c,P_c,V_c)
     # _,dpdvv = p∂p∂V(model,2*Vv0,T,SA[1.0])
     # @show dpdvv*Vv0
     return Vl0,Vv0
-end
+end =#
 
 function sat_pure(model,T,V0,method)
     f! = ObjSatPure(model,T)

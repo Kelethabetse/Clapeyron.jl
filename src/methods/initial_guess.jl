@@ -333,35 +333,9 @@ function x0_saturation_temperature end
 
 function x0_saturation_temperature(model::EoSModel,p,::Nothing)
     crit = crit_pure(model)
-    return x0_saturation_temperature(model,p,crit)
+    return x0_saturation_temperature(model,p,crit) #in critical_guess.jl
 end
 
-function x0_saturation_temperature(model::EoSModel,p,crit::Tuple)
-    Tc,Pc,Vc = crit
-    A,B,C = (6.668322465137264,6.098791871032391,-0.08318016317721941)
-    if Pc < p
-        nan = zero(p)/zero(p)
-        return (nan,nan,nan)
-    end
-    lnp̄ = log(p / Pc)
-    T0 = Tc*(B/(A-lnp̄)-C)
-    pii,vli,vvi = saturation_pressure(model,T0,ChemPotVSaturation(;crit))
-
-    if isnan(pii)
-        nan = zero(p)/zero(p)
-        return (nan,nan,nan)
-    end
-    Δp = (p-pii)
-    S_v = VT_entropy(model,vvi,T0)
-    S_l = VT_entropy(model,vli,T0)
-    ΔS = S_v - S_l
-    ΔV = vvi - vli
-    dpdt = ΔS/ΔV #≈ (p - pii)/(T-Tnew)
-    T = T0 + Δp/dpdt
-    vv = volume_virial(model,p,T)
-    vl = 0.3*lb_volume(model) + 0.7*vli
-    return (T,vl,vv)
-end
 
 """
     x0_crit_pure(model::EoSModel)

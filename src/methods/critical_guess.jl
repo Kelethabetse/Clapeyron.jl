@@ -95,6 +95,47 @@ function x0_sat_pure(model::ExtrapolatedCritical,T)
     return Vl,Vv
 end
 
+
+#in case that there isn't any antoine coefficients:
+#We aproximate to RK, use the cubic antoine, and perform refinement with one Clapeyron Saturation iteration 
+
+function x0_saturation_temperature(model::EoSModel,p,crit::Tuple)
+    
+    Tc,Pc,Vc = crit
+    Pr = p/Pc
+
+    if Pr > 1
+        nan = zero(p)/zero(p)
+        return (nan,nan,nan)
+    end
+
+    if Pr < 0.95
+        A,B,C = (6.668322465137264,6.098791871032391,-0.08318016317721941)
+        lnp̄ = log(p / Pc)
+        T0 = Tc*(B/(A-lnp̄)-C)
+        
+        pii,vli,vvi = saturation_pressure(model,T0,ChemPotVSaturation(;crit))
+
+        if isnan(pii)
+            nan = zero(p)/zero(p)
+            return (nan,nan,nan)
+        end
+        Δp = (p-pii)
+        S_v = VT_entropy(model,vvi,T0)
+        S_l = VT_entropy(model,vli,T0)
+        ΔS = S_v - S_l
+        ΔV = vvi - vli
+        dpdt = ΔS/ΔV #≈ (p - pii)/(T-Tnew)
+        T = T0 + Δp/dpdt
+        vv = volume_virial(model,p,T)
+        vl = 0.3*lb_volume(model) + 0.7*vli
+        return (T,vl,vv)
+    else
+        model_crit = ExtrapolatedCritical(model,crit)
+        return x0_saturation_temperature(model_crit,p,crit)
+    end
+end
+
 function x0_saturation_temperature(model::ExtrapolatedCritical,p,crit::Tuple)
     Tc,Pc,Vc = model.Tc,model.Pc,model.Vc
     #ΔT = T - Tc
@@ -105,14 +146,19 @@ function x0_saturation_temperature(model::ExtrapolatedCritical,p,crit::Tuple)
     fp(ΔT) = pressure(model,Vc + sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³),ΔT + Tc) - p
     prob = Roots.ZeroProblem(fp,-0.01*Tc)
     Tsat  = Tc + Roots.solve(prob)
-    Vv = volume(model.model,p,Tsat,phase = :v)
-    ΔV_corrected = abs(Vv - Vc)
+    
+    Vl = volume(model.model,p,Tsat,phase = :l)
+    
+    ΔV_corrected = abs(Vl - Vc)
     lb_v = lb_volume(model.model)
-    Vl = Vc - ΔV_corrected
-    if Vl < 2*lb_v
-        Vl = volume(model.model,p,Tsat,phase = :l)
-    end
+    #Vmax = -2*second_virial_coefficient(model.model,Tsat)
+    Vv0 = Vc + 2*ΔV_corrected #overestimate vapor volume to use it as an initial guess
+    Vv = volume(model.model,p,Tsat,vol0 = Vv0)
+    #if Vl < 2*lb_v
+    #    Vl = volume(model.model,p,Tsat,phase = :l)
+    #end
     return Tsat,Vl,Vv
 end
+
 
 export ExtrapolatedCritical

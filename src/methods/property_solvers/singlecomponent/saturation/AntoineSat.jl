@@ -82,9 +82,6 @@ function x0_saturation_temperature(model::EoSModel,p,::AntoineSaturation)
     return (T0,Vl,Vv)
 end
 
-#in case that there isn't any antoine coefficients:
-#We aproximate to RK, use the cubic antoine, and perform refinement with one Clapeyron Saturation iteration 
-
 function saturation_temperature_impl(model,p,method::AntoineSaturation)    
     scales = scale_sat_pure(model)
     if isnothing(method.T0)
@@ -137,10 +134,11 @@ function saturation_temperature_impl(model,p,method::AntoineSaturation)
     p > pc && return fail
     T2 >= Tc && return fail
     
-    if 0.999pc > p > 0.95pc 
-        #you could still perform another iteration from a better initial point
-        Vl2,Vv2 = x0_sat_pure_crit(model,0.99T2,Tc,pc,vc)
-        res,converged = try_sat_temp(model,p,0.99T2,Vl2,Vv2,scales,method)
+    if p > 0.95pc
+        #perform critical extrapolation
+        model_crit = ExtrapolatedCritical(model,crit)
+        T0_c,Vl_c,Vv_c = x0_saturation_temperature(model_crit,p)
+        res,converged = try_sat_temp(model,p,T0_c,Vl_c,Vv_c,scales,method)
         converged && return res
     elseif p < 0.5pc
         #very low pressure, we need a better aproximation. luckily we now have a better T
@@ -148,14 +146,7 @@ function saturation_temperature_impl(model,p,method::AntoineSaturation)
         Vl2,Vv2 = x0_sat_pure(model,T2)
         res,converged = try_sat_temp(model,p,T2,Vl2,Vv2,scales,method)
         converged && return res
-    end
-    
-    if p > 0.999pc
-    #almost no hope, only ClapeyronSat works in this range. 
-        crit_satmethod = ClapeyronSaturation(;crit)
-        return saturation_temperature(model,p,crit_satmethod)
-    end
-    
+    end 
     return fail
 end
 

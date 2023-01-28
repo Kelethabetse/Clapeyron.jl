@@ -52,12 +52,16 @@ function Obj_sat_pure_T(model,T,p,cache,satmethod)
     Told,pold,_,_,_ = cache[]
     pii,vli,vvi = saturation_pressure(model,T,satmethod)
     Δp = (p-pii)
-    abs(Δp) < 4eps(p) && return T
+    if abs(Δp) < 4eps(p)  
+        cache[] = (T,pii,vli,vvi,false)
+        return T
+    end
     #if abs(Δp/p) < 0.01
     #    use_v = true
     #end
     if Told < T
         if isnan(pii) && !isnan(pold)
+            cache[] = (T,pii,vli,vvi,false)
             return (T+Told)/2
         end
     end
