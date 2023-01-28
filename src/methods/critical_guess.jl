@@ -56,7 +56,7 @@ end
 
 lb_volume(model::ExtrapolatedCritical,z = SA[1.0]) = zero(model.Vc)*only(z)
 
-function pressure(model::ExtrapolatedCritical,V,T,z = SA[1.0])
+function ∂f∂V(model::ExtrapolatedCritical,V,T,z)
     Tc,Pc,Vc = model.Tc,model.Pc,model.Vc
     ΔT = T - Tc
     ΔV = V/only(z) - Vc
@@ -64,7 +64,7 @@ function pressure(model::ExtrapolatedCritical,V,T,z = SA[1.0])
     ∂²p_∂T∂V = model.d2p_dVdT
     ∂³p_∂V³ = model.d3p_dV3
     Δp = (∂p_∂T)*ΔT + (∂²p_∂T∂V)*(ΔV*ΔT) + (1/6)*(∂³p_∂V³)*ΔV^3
-    return Δp + Pc
+    return -(Δp + Pc)
 end
 
 function x0_sat_pure(model::ExtrapolatedCritical,T)
