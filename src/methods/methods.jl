@@ -217,9 +217,10 @@ function gradient_type(V,T,z::FractionVector)
     return Vector{μ}
 end
 
-include("initial_guess.jl")
 include("differentials.jl")
 include("VT.jl")
+include("initial_guess.jl")
+include("critical_guess.jl")
 include("fugacity_coefficient.jl")
 include("property_solvers/property_solvers.jl")
 include("tpd.jl")

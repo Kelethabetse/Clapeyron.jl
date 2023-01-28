@@ -351,7 +351,6 @@ function x0_saturation_temperature(model::EoSModel,p,crit::Tuple)
         nan = zero(p)/zero(p)
         return (nan,nan,nan)
     end
-
     Δp = (p-pii)
     S_v = VT_entropy(model,vvi,T0)
     S_l = VT_entropy(model,vli,T0)
@@ -396,94 +395,7 @@ end
 
 T_scales(model,z) = T_scales(model)
 
-#ExtrapolatedCritical, to evaluate properties really close to the critical point, as fast as possible
 
-struct ExtrapolatedCritical{T} <: EoSModel
-    Tc::T
-    Pc::T
-    Vc::T
-    dp_dT::T
-    d2p_dVdT::T
-    d3p_dV3::T
-end
-
-function Base.show(io::IO,::MIME"text/plain",model::ExtrapolatedCritical)
-    print(io,"ExtrapolatedCritical(Tc = $(model.Tc),Pc = $(model.Pc), Vc = $(model.Vc))")
-end
-
-function Base.show(io::IO,model::ExtrapolatedCritical)
-    print(io,"ExtrapolatedCritical(Tc = $(model.Tc),Pc = $(model.Pc), Vc = $(model.Vc))")
-end
-
-function crit_pure(model::ExtrapolatedCritical)
-    return model.Tc,model.Pc,model.Vc
-end
-
-"""
-    ExtrapolatedCritical(model,crit = crit_pure(model))
-
-returns an extrapolation of a pure model's V-T surface, based on a taylor expansion at the critical point:
-```
-Δp = (∂p/∂T)*ΔT + (∂²p/∂T∂V)*(ΔV*ΔT) + (1/6)*(∂³p/∂V³)*ΔV^3
-ΔT = T - Tc
-Δp = p - pc
-ΔV = V - Vc
-```
-"""
-function ExtrapolatedCritical(model::EoSModel,crit = crit_pure(model))
-    Tc,Pc,Vc = crit
-    #we call this because it should be already compiled
-    x0 = vec2(one(Tc),log10(Vc))
-    obj = ObjCritPure(model,Tc,x0)
-    function f(x)
-        V,T = x
-        ∂²A∂V², ∂³A∂V³ = ∂²³f(model, V, T, SA[1.0])
-        return SA[∂²A∂V²,∂³A∂V³]
-    end
-
-    J = ForwardDiff.jacobian(f,vec2(Vc,Tc))
-    #f(x) = ∂²A∂V², ∂³A∂V³ = ∂p∂V, ∂²p∂V²
-    #J(x) = [∂2p∂V∂T, ∂2p∂V2
-    #          ∂3p∂V2∂T, ∂3p∂V3]
-
-    dp_dT = Solvers.derivative(_T -> pressure(model,Vc,_T),Tc)
-    d2p_dVdT,d3p_dV3 = diagvalues(J)
-    return ExtrapolatedCritical(Tc,Pc,Vc,dp_dT,d2p_dVdT,d3p_dV3)
-end
-
-lb_volume(model::ExtrapolatedCritical,z = SA[1.0]) = zero(model.Vc)*only(z)
-
-function pressure(model::ExtrapolatedCritical,V,T,z = SA[1.0])
-    Tc,Pc,Vc = model.Tc,model.Pc,model.Vc
-    ΔT = T - Tc
-    ΔV = V/only(z) - Vc
-    ∂p_∂T = model.dp_dT
-    ∂²p_∂T∂V = model.d2p_dVdT
-    ∂³p_∂V³ = model.d3p_dV3
-    Δp = (∂p_∂T)*ΔT + (∂²p_∂T∂V)*(ΔV*ΔT) + (1/6)*(∂³p_∂V³)*ΔV^3
-    return Δp + Pc
-end
-
-function x0_sat_pure(model::ExtrapolatedCritical,T)
-    #we do this in V-T base
-    Tc,Pc,Vc = model.Tc,model.Pc,model.Vc
-    ΔT = T - Tc
-    #Δp = p - Pc
-    #∂p_∂T = model.dp_dT
-    ∂²p_∂T∂V = model.d2p_dVdT
-    ∂³p_∂V³ = model.d3p_dV3
-
-    ΔV = sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³)
-    Vx = ΔV + Vc
-    ρc = 1/Vc
-    Δρ = 1/Vx - ρc
-    Bρ = Δρ/sqrt(-ΔT/Tc)
-    ρl,ρv = ρc + abs(Bρ)*sqrt(-ΔT/Tc), ρc - abs(Bρ)*sqrt(-ΔT/Tc)
-    Vl,Vv = 1/ρl, 1/ρv
-    #@show pressure(model,Vl,T)
-    #@show pressure(model,Vv,T)
-    return 1/ρl, 1/ρv
-end
 #=
 function eos(model::ExtrapolatedCritical,V,T,z = SA[1.0])
     #TODO
