@@ -138,8 +138,13 @@ function saturation_temperature_impl(model,p,method::AntoineSaturation)
         #perform critical extrapolation
         model_crit = ExtrapolatedCritical(model,crit)
         T0_c,Vl_c,Vv_c = x0_saturation_temperature(model_crit,p)
-        res,converged = try_sat_temp(model,p,T0_c,Vl_c,Vv_c,scales,method)
-        converged && return res
+        #check that we don't use this again.
+        #by default we perform critical extrapolation, but it could happen that the model has its own x0_saturation_temperature method defined.
+        #in this case, that method failed near the critical point.
+        if Vl_c != Vl && Vv_c != Vv 
+            res,converged = try_sat_temp(model,p,T0_c,Vl_c,Vv_c,scales,method)
+            converged && return res
+        end
     elseif p < 0.5pc
         #very low pressure, we need a better aproximation. luckily we now have a better T
         #TODO: look for a way to detect this case without looking at the critical point
