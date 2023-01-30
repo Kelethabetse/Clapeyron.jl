@@ -8,10 +8,15 @@ struct ExtrapolatedCritical{𝕄,𝕋} <: EoSModel
     dp_dT::𝕋
     d2p_dVdT::𝕋
     d3p_dV3::𝕋
+    failed::Bool
 end
 
 function Base.show(io::IO,::MIME"text/plain",model::ExtrapolatedCritical)
     print(io,"ExtrapolatedCritical(Tc = $(model.Tc),Pc = $(model.Pc), Vc = $(model.Vc))")
+    if model.failed
+        print(io,", failed")
+    end
+    print(io,')')
 end
 
 function Base.show(io::IO,model::ExtrapolatedCritical)
@@ -36,8 +41,7 @@ returns an extrapolation of a pure model's V-T surface, based on a taylor expans
 function ExtrapolatedCritical(model::EoSModel,crit = crit_pure(model))
     Tc,Pc,Vc = crit
     #we call this because it should be already compiled
-    x0 = vec2(one(Tc),log10(Vc))
-    obj = ObjCritPure(model,Tc,x0)
+    #x0 = vec2(one(Tc),log10(Vc))
     function f(x)
         V,T = x
         ∂²A∂V², ∂³A∂V³ = ∂²³f(model, V, T, SA[1.0])
@@ -51,7 +55,18 @@ function ExtrapolatedCritical(model::EoSModel,crit = crit_pure(model))
 
     dp_dT = Solvers.derivative(_T -> pressure(model,Vc,_T),Tc)
     d2p_dVdT,d3p_dV3 = diagvalues(J)
-    return ExtrapolatedCritical(model,Tc,Pc,Vc,dp_dT,d2p_dVdT,d3p_dV3)
+
+    failed = false
+
+    if !isfinite(d2p_dVdT) || !isfinite(d3p_dV3)
+        failed = true
+    end
+
+    if d2p_dVdT <= 0 || d3p_dV3 <= 0
+        failed = true
+    end
+
+    return ExtrapolatedCritical(model,Tc,Pc,Vc,dp_dT,d2p_dVdT,d3p_dV3,failed)
 end
 
 lb_volume(model::ExtrapolatedCritical,z = SA[1.0]) = zero(model.Vc)*only(z)
@@ -71,20 +86,22 @@ function x0_sat_pure(model::ExtrapolatedCritical,T)
     #we do this in V-T base
     Tc,Pc,Vc = model.Tc,model.Pc,model.Vc
     ΔT = T - Tc
-    #Δp = p - Pc
-    #∂p_∂T = model.dp_dT
-    ∂²p_∂T∂V = model.d2p_dVdT
-    ∂³p_∂V³ = model.d3p_dV3
-
-    ΔV = sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³)
-    Vx = ΔV + Vc
-    ρc = 1/Vc
-    Δρ = 1/Vx - ρc
-    Bρ = Δρ/sqrt(-ΔT/Tc)
-    ρl,ρv = ρc + abs(Bρ)*sqrt(-ΔT/Tc), ρc - abs(Bρ)*sqrt(-ΔT/Tc)
-    Vl0,Vv0 = 1/ρl, 1/ρv
-    psat = pressure(model,Vl0,T)
-    
+    if model.failed
+        T0 = 369.89*T/Tc
+        psat0 = _propaneref_psat(T0)
+        psat = Pc*psat0/4.2512e6
+    else
+        ∂²p_∂T∂V = model.d2p_dVdT
+        ∂³p_∂V³ = model.d3p_dV3
+        ΔV = sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³)
+        Vx = ΔV + Vc
+        ρc = 1/Vc
+        Δρ = 1/Vx - ρc
+        Bρ = Δρ/sqrt(-ΔT/Tc)
+        ρl,ρv = ρc + abs(Bρ)*sqrt(-ΔT/Tc), ρc - abs(Bρ)*sqrt(-ΔT/Tc)
+        Vl0,Vv0 = 1/ρl, 1/ρv
+        psat = pressure(model,Vl0,T)
+    end
     Vv = volume(model.model,psat,T,phase = :v)
     ΔV_corrected = abs(Vv - Vc)
     lb_v = lb_volume(model.model,T)
@@ -141,12 +158,18 @@ function x0_saturation_temperature(model::ExtrapolatedCritical,p,crit::Tuple)
     #ΔT = T - Tc
     Δp = p - Pc
     #∂p_∂T = model.dp_dT
-    ∂²p_∂T∂V = model.d2p_dVdT
-    ∂³p_∂V³ = model.d3p_dV3
-    fp(ΔT) = pressure(model,Vc + sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³),ΔT + Tc) - p
-    prob = Roots.ZeroProblem(fp,-0.01*Tc)
-    Tsat  = Tc + Roots.solve(prob)
-    
+    if model.failed
+        T0 = 369.89*T/Tc
+        p0 = Pc*p/4.2512e6
+        T0 = _propaneref_tsat(p0)
+        Tsat = 369.89*T0/Tc
+    else
+        ∂²p_∂T∂V = model.d2p_dVdT
+        ∂³p_∂V³ = model.d3p_dV3
+        fp(ΔT) = pressure(model,Vc + sqrt(-6*ΔT*∂²p_∂T∂V/∂³p_∂V³),ΔT + Tc) - p
+        prob = Roots.ZeroProblem(fp,-0.01*Tc)
+        Tsat  = Tc + Roots.solve(prob)
+    end
     Vl = volume(model.model,p,Tsat,phase = :l)
     
     ΔV_corrected = abs(Vl - Vc)
@@ -159,6 +182,5 @@ function x0_saturation_temperature(model::ExtrapolatedCritical,p,crit::Tuple)
     #end
     return Tsat,Vl,Vv
 end
-
 
 export ExtrapolatedCritical
