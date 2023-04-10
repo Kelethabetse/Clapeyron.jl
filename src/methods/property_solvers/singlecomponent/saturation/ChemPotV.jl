@@ -1,113 +1,115 @@
 #TODO: better name
 """
-    ChemPotVSaturation()
-    ChemPotVSaturation(;log10vl,log10vv)
+    ChemPotVSaturation <: SaturationMethod
     ChemPotVSaturation(V0)
-
-Default Saturation method used by `Clapeyron.jl`. It uses equality of Chemical Potentials with a volume basis. If no volumes are provided, it will use  [`x0_sat_pure`](@ref). 
-
+    ChemPotVSaturation(;vl = nothing,
+                        vv = nothing,
+                        crit = nothing,
+                        crit_retry = true
+                        f_limit = 0.0,
+                        atol = 1e-8,
+                        rtol = 1e-12,
+                        max_iters = 10^4)
+Default `saturation_pressure` Saturation method used by `Clapeyron.jl`. It uses equality of Chemical Potentials with a volume basis. If no volumes are provided, it will use  [`x0_sat_pure`](@ref).
 If those initial guesses fail and the specification is near critical point, it will try one more time, using Corresponding States instead.
-
-`V0` is `[log10(Vₗ₀),log10(Vᵥ₀)]` , where `Vₗ₀`  and `Vᵥ₀` are initial guesses for the liquid and vapour volumes.
+when `crit_retry` is true, if the initial solve fail, it will try to obtain a better estimate by calculating the critical point. 
+`f_limit`, `atol`, `rtol`, `max_iters` are passed to the non linear system solver.
 """
-struct ChemPotVSaturation{T} <: SaturationMethod
+struct ChemPotVSaturation{T,C} <: SaturationMethod
     vl::Union{Nothing,T}
     vv::Union{Nothing,T}
+    crit::C
+    crit_retry::Bool
+    f_limit::Float64
+    atol::Float64
+    rtol::Float64
+    max_iters::Int
 end
 
-ChemPotVSaturation(x::Tuple) = ChemPotVSaturation(first(x),last(x))
-ChemPotVSaturation(x::Vector) = ChemPotVSaturation(first(x),last(x))
+ChemPotVSaturation(x::Tuple) = ChemPotVSaturation(vl = first(x),vv = last(x))
+ChemPotVSaturation(x::Vector) = ChemPotVSaturation(vl = first(x),vv = last(x))
 
-function vec2(method::ChemPotVSaturation{T},opt = true) where T <:Real
-    return vec2(method.vl,method.vv,opt)
-end
+function ChemPotVSaturation(;vl = nothing,
+                            vv = nothing,
+                            crit = nothing,
+                            crit_retry = true,
+                            f_limit = 0.0,
+                            atol = 1e-8,
+                            rtol = 1e-12,
+                            max_iters = 10000)
 
-function ChemPotVSaturation(;log10vl = nothing,log10vv = nothing)
-    if (log10vl === nothing) && (log10vv === nothing)
-        return ChemPotVSaturation{Nothing}(nothing,nothing)
-    elseif !(log10vl === nothing) && (log10vv === nothing)
-        log10vl = float(log10vl)
-        return ChemPotVSaturation(log10vl,log10vv)
-    elseif (log10vl === nothing) && !(log10vv === nothing)
-        log10vv = float(log10vv)
-        return ChemPotVSaturation(log10vl,log10vv)
+    if (vl === nothing) && (vv === nothing)
+        return ChemPotVSaturation{Nothing,typeof(crit)}(nothing,nothing,crit,crit_retry,f_limit,atol,rtol,max_iters)
+    elseif !(vl === nothing) && (vv === nothing)
+        vl = float(vl)
+        return ChemPotVSaturation(vl,vv,crit,crit_retry,f_limit,atol,rtol,max_iters)
+    elseif (vl === nothing) && !(vv === nothing)
+        vv = float(vv)
+        return ChemPotVSaturation(vl,vv,crit,crit_retry,f_limit,atol,rtol,max_iters)
     else
         T = one(vl)/one(vv)
-        log10vl,log10vv,_ = promote(log10vl,log10vv,T)
-        return ChemPotVSaturation(log10vl,log10vv)
+        vl,vv,_ = promote(vl,vv,T)
+        return ChemPotVSaturation(vl,vv,crit,crit_retry,f_limit,atol,rtol,max_iters)
     end
 end
 
-function check_valid_sat_pure(model,P_sat,V_l,V_v,T)
-    _,dpdvl = p∂p∂V(model,V_l,T,SA[1.0])
-    _,dpdvv = p∂p∂V(model,V_v,T,SA[1.0])
-    (dpdvl > 0) | (dpdvv > 0) && return false
-    ε = abs(V_l-V_v)/(eps(typeof(V_l-V_v)))
-    #if ΔV > ε then Vl and Vv are different values
-    return ε > 5e7
-end
-
-function try_sat_pure(model,V0,f!,T,result,error_val,method = LineSearch(Newton()))
-    if !isfinite(V0[1]) | !isfinite(V0[2])
-        return false
-    end
-    try
-        res = sat_pure(model,V0,f!,T,method)
-        result[] = res
-    catch e #normally, failures occur near the critical point
-        error_val[] = e
-        return false
-    end
-
-    (P_sat,V_l,V_v) = result[]
-    return check_valid_sat_pure(model,P_sat,V_l,V_v,T)
-end
-
-function saturation_pressure(model,T,V0::Union{Tuple,Vector} = x0_sat_pure(model,T))
+function saturation_pressure(model::EoSModel,T,V0::Union{Tuple,Vector})
+    single_component_check(saturation_pressure,model)
     method = ChemPotVSaturation(V0)
+    T = T*T/T
     return saturation_pressure_impl(model,T,method)
 end
 
+function saturation_pressure(model::EoSModel,T)
+   saturation_pressure(model,T,ChemPotVSaturation())
+end
+
 function saturation_pressure_impl(model::EoSModel, T, method::ChemPotVSaturation{Nothing})
-    return saturation_pressure_impl(model,T,ChemPotVSaturation(x0_sat_pure(model,T)))
+    vl,vv = x0_sat_pure(model,T)
+    crit = method.crit
+    return saturation_pressure_impl(model,T,ChemPotVSaturation(;vl,vv,crit))
 end
 
 function saturation_pressure_impl(model::EoSModel, T, method::ChemPotVSaturation{<:Number})
-    
-    V0 = vec2(method,T)
+    V0 = vec2(log(method.vl),log(method.vv),T)
     V01,V02 = V0
     TYPE = eltype(V0)
-    nan = zero(TYPE)/zero(TYPE)    
+    nan = zero(TYPE)/zero(TYPE)
     f! = ObjSatPure(model,T) #functor
-    res0 = (nan,nan,nan)
-    result = Ref(res0)
-    error_val = Ref{Any}(nothing)
-    converged = try_sat_pure(model,V0,f!,T,result,error_val)  
+    fail = (nan,nan,nan)
+    if !isfinite(V0[1]) | !isfinite(V0[2]) | !isfinite(T)
+        #error in initial conditions
+        return fail
+    end
+    result,converged = sat_pure(f!,V0,method)
     #did not converge, but didnt error.
     if converged
-        return result[]
+        return result
     end
-    (T_c, p_c, V_c) = crit_pure(model)
+    if !method.crit_retry
+        return fail
+    end
+
+    crit = method.crit
+    if isnothing(crit)
+        crit = crit_pure(model)
+    end
+    T_c, p_c, V_c = crit
     if abs(T_c-T) < eps(typeof(T))
         return (p_c,V_c,V_c)
     end
-    if T_c < T
-        # @error "initial temperature $T greater than critical temperature $T_c. returning NaN"
-    else
+        #@error "initial temperature $T greater than critical temperature $T_c. returning NaN"
+    if T < T_c
         x0 = x0_sat_pure_crit(model,T,T_c,p_c,V_c)
         V01,V02 = x0
-        if T isa Base.IEEEFloat
-            V0 = MVector((V01,V02))
-        else
-            V0 = SizedVector{2,typeof(first(V0))}((V01,V02))
-        end
-        converged = try_sat_pure(model,V0,f!,T,result,error_val)   
+        V0 = vec2(log(V01),log(V02),T)
+        result,converged = sat_pure(f!,V0,method)
         if converged
-            return result[]
+            return result
         end
     end
     #not converged, even trying with better critical aprox.
-    return res0
+    return fail
 end
 
 struct ObjSatPure{M,T}
@@ -127,12 +129,12 @@ function (f::ObjSatPure)(F,x)
     model = f.model
     scales = (f.ps,f.mus)
     T = f.Tsat
-    return Obj_Sat(model, F, T, exp10(x[1]), exp10(x[2]),scales)
+    return Obj_Sat(model, F, T, exp(x[1]), exp(x[2]),scales)
 end
 #with the critical point, we can perform a
 #corresponding states approximation with the
 #propane reference equation of state
-function x0_sat_pure_crit(model,T,T_c,P_c,V_c) 
+function x0_sat_pure_crit(model,T,T_c,P_c,V_c)
     h = V_c*5000
     T0 = 369.89*T/T_c
     Vl0 = (1.0/_propaneref_rholsat(T0))*h
@@ -141,22 +143,36 @@ function x0_sat_pure_crit(model,T,T_c,P_c,V_c)
     #μ_l = only(VT_chemical_potential(model,Vl0,T,_1))
     #μ_v = only(VT_chemical_potential(model,Vv0,T,_1))
     #@show (μ_l < μ_v,T/T_c)
-    #if μ_l < μ_v 
+    #if μ_l < μ_v
       #@show μ_l,μ_v
     #end
     # _,dpdvv = p∂p∂V(model,Vv0,T,SA[1.0])
     # @show dpdvv*Vv0
     # _,dpdvv = p∂p∂V(model,2*Vv0,T,SA[1.0])
     # @show dpdvv*Vv0
-    return (log10(Vl0),log10(Vv0))
+    return Vl0,Vv0
 end
-function sat_pure(model::EoSModel,V0,f!,T,method =LineSearch(Newton()))  
-    r = Solvers.nlsolve(f!, V0 ,method )
+
+#=
+function sat_pure(model,T,V0,method)
+    f! = ObjSatPure(model,T)
+    return sat_pure(f!,V0,method)
+end
+=#
+function sat_pure(f!::ObjSatPure,V0,method)
+    model, T = f!.model, f!.Tsat
+    nan = zero(eltype(V0))/zero(eltype(V0))
+    if !isfinite(V0[1]) | !isfinite(V0[2]) | !isfinite(T)
+        return (nan,nan,nan), false
+    end
+    r = Solvers.nlsolve(f!, V0 ,LineSearch(Newton()),NEqOptions(method),ForwardDiff.Chunk{2}())
     Vsol = Solvers.x_sol(r)
-    V_l = exp10(Vsol[1])
-    V_v = exp10(Vsol[2])
+    V_l = exp(Vsol[1])
+    V_v = exp(Vsol[2])
     P_sat = pressure(model,V_v,T)
-    return (P_sat,V_l,V_v)
+    res = (P_sat,V_l,V_v)
+    valid = check_valid_sat_pure(model,P_sat,V_l,V_v,T)
+    return res,valid
 end
 
 function Obj_Sat(model::EoSModel, F, T, V_l, V_v,scales)

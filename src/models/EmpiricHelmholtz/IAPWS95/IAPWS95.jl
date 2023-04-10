@@ -44,8 +44,6 @@ struct IAPWS95Consts <: EoSParam
     end
 end
 
-
-
 struct IAPWS95 <: EmpiricHelmholtzModel
     components::Vector{String}
     consts::IAPWS95Consts
@@ -87,7 +85,7 @@ parameters `n⁰`,`γ⁰`,`n`,`t`,`d`,`c`,`α`,`β`,`γ`,`ε`,`A`,`B`,`C`,`D` wh
 
 ## References
 
-1. Wagner, W., & Pruß, A. (2002). The IAPWS formulation 1995 for the thermodynamic properties of ordinary water substance for general and scientific use. Journal of physical and chemical reference data, 31(2), 387–535. doi:10.1063/1.1461829
+1. Wagner, W., & Pruß, A. (2002). The IAPWS formulation 1995 for the thermodynamic properties of ordinary water substance for general and scientific use. Journal of physical and chemical reference data, 31(2), 387–535. [doi:10.1063/1.1461829](https://doi.org/10.1063/1.1461829)
 2. IAPWS R6-95 (2018). Revised Release on the IAPWS Formulation 1995 for the Thermodynamic Properties of Ordinary Water Substance for General and Scientific Use
 
 """
@@ -113,13 +111,15 @@ function _fr(model::IAPWS95,δ,τ)
     t = model.consts.t::Vector{Float64}
     c = model.consts.c::Vector{Int64}
     res=zero(δ+τ)
+    logδ = log(δ)
+    logτ = log(τ)
     for i = 1:7
-        res += n[i]* (δ^d[i]) * (τ^t[i])
+        res += n[i] * exp(logδ*d[i] + logτ*t[i])
     end
 
     for i = 8:51
         ic = i-7
-        res += n[i]* (δ^d[i]) * (τ^t[i]) * exp(-δ^c[ic])
+        res += n[i]* exp(logδ*d[i] + logτ*t[i] -δ^c[ic])
     end
     
     nτt1,nτt2,nτt3 = (-0.31306260323435e2, 0.31546140237781e2*τ, -0.25213154341695e4*τ^4)
@@ -153,23 +153,18 @@ end
 function a_ideal(model::IAPWS95,V,T,z=SA[1.0])
     Σz = only(z) #single component
     v = V/Σz
-     mass_v =  v*1000.0*0.055508472036052976
-     rho = one(mass_v)/mass_v
-     δ = rho*0.003105590062111801 #/322
-     τ = 647.096/T
+    ρ = 1/v
+    δ = ρ/17873.72799560906
+    τ = 647.096/T
      return 0.9999890238768239*_f0(model,δ,τ)
 end
 
 function a_res(model::IAPWS95,V,T,z=SA[1.0])
     Σz = only(z) #single component
     v = V/Σz
-    #R value calculated from molecular weight and specific gas constant
-     #return 8.3143713575874*T*_f(model, molar_to_weight(1/v,[model.molecularWeight],[1.0]),T)
-     #println(molar_to_weight(1/v,[model.molecularWeight],[1.0]))'
-     mass_v =  v*1000.0*0.055508472036052976
-     rho = one(mass_v)/mass_v
-     δ = rho*0.003105590062111801 #/322
-     τ = 647.096/T
+    ρ = 1/v
+    δ = ρ/17873.72799560906
+    τ = 647.096/T
      return 0.9999890238768239*_fr(model,δ,τ)
 end
 
@@ -177,26 +172,18 @@ end
 function eos(model::IAPWS95, V, T, z=SA[1.0])
     Σz = only(z) #single component
     v = V/Σz
-    #R value calculated from molecular weight and specific gas constant
-     #return 8.3143713575874*T*_f(model, molar_to_weight(1/v,[model.molecularWeight],[1.0]),T)
-     #println(molar_to_weight(1/v,[model.molecularWeight],[1.0]))'
-     mass_v =  v*1000.0*0.055508472036052976
-     rho = one(mass_v)/mass_v
-     δ = rho*0.003105590062111801 #/322
-     τ = 647.096/T
+    ρ = 1/v
+    δ = ρ/17873.72799560906
+    τ = 647.096/T
     return R̄*Σz*T*0.9999890238768239*(_fr(model,δ,τ)+_f0(model,δ,τ))
 end
 
 function eos_res(model::IAPWS95, V, T, z=SA[1.0])
     Σz = only(z) #single component
     v = V/Σz
-    #R value calculated from molecular weight and specific gas constant
-     #return 8.3143713575874*T*_f(model, molar_to_weight(1/v,[model.molecularWeight],[1.0]),T)
-     #println(molar_to_weight(1/v,[model.molecularWeight],[1.0]))'
-     mass_v =  v*1000.0*0.055508472036052976
-     rho = one(mass_v)/mass_v
-     δ = rho*0.003105590062111801 #/322
-     τ = 647.096/T
+    ρ = 1/v
+    δ = ρ/17873.72799560906
+    τ = 647.096/T
     return R̄*Σz*T*0.9999890238768239*_fr(model,δ,τ)
 end
 
@@ -237,8 +224,14 @@ function water_t_sat(p)
     return T
 end
 
-x0_saturation_temperature(model::IAPWS95,p) = water_t_sat(p)
-psat_init(model::IAPWS95,T) = water_p_sat(T)
+function x0_saturation_temperature(model::IAPWS95,p)
+    T = water_t_sat(p)
+    vl = saturated_water_liquid(T)
+    vv = saturated_water_vapor(T)
+    return (T,vl,vv)
+end
+
+x0_psat(model::IAPWS95,T,crit=nothing) = water_p_sat(T)
 
 #from MoistAir.jl, liquid
 function saturated_water_liquid(Tk)
@@ -273,6 +266,9 @@ function x0_volume(model::IAPWS95,p,T,z=[1.0];phase = :unknown)
         return 1.1*saturated_water_vapor(T)
     elseif is_supercritical(phase)
         return model.consts.Vc
+    else
+        _0 = zero(p+T+first(z))
+        return _0/_0
     end
 end
 
@@ -283,8 +279,7 @@ function x0_sat_pure(model::IAPWS95,T)
     else
         vl = saturated_water_liquid(T)
         vg = saturated_water_vapor(T)
-        x0  = (vl,vg)
-    return log10.(x0)
+        return (vl,vg)
     end
 end
 
