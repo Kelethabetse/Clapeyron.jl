@@ -1,10 +1,10 @@
 struct PCSAFTParam <: EoSParam
-    Mw::SingleParam{Float64}
-    segment::SingleParam{Float64}
-    sigma::PairParam{Float64}
-    epsilon::PairParam{Float64}
-    epsilon_assoc::AssocParam{Float64}
-    bondvol::AssocParam{Float64}
+    Mw::SingleParam
+    segment::SingleParam
+    sigma::PairParam
+    epsilon::PairParam
+    epsilon_assoc::AssocParam
+    bondvol::AssocParam
 end
 
 abstract type PCSAFTModel <: SAFTModel end
