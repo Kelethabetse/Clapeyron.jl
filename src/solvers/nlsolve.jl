@@ -124,7 +124,7 @@ end
 
 function nlsolve(nl_problem::NEqProblem,x0,method =TrustRegion(Newton(), NWI()),options=NEqOptions())
     #hook our MeritObjective here.
-    return solve(nl_problem, x0, method, options)
+    return NLSolvers.solve(nl_problem, x0, method, options)
 end
 
 function autoVectorObjective(f!,x0,chunk)
