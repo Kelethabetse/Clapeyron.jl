@@ -35,14 +35,14 @@ end
 
 function _opt_options(neq::NEqOptions)
     return OptimizationOptions(;
-    x_abstol = 0.0,
-    x_reltol = 0.0,
+    x_abstol = 2*neq.f_abstol,
+    x_reltol = 2*neq.f_reltol,
     x_norm = x -> norm(x, Inf),
     g_abstol = 2*neq.f_abstol,
     g_reltol = 2*neq.f_reltol,
     g_norm = x -> norm(x, Inf),
     f_limit = neq.f_limit,
-    f_abstol = 0.0,
+    f_abstol = 0.0, #TODO, maybe neq.f_abstol
     f_reltol = 0.0,
     nm_tol = 1e-8,
     maxiter = neq.maxiter,
@@ -55,11 +55,30 @@ function NLSolvers.value(mo::MeritObjective, x)
     dot(Fx,Fx)/2
 end
 
+#not correct but it is only used for Newton
 function NLSolvers.upto_hessian(mo::MeritObjective, ∇f, ∇²f, x)
-    Fx,Jx = mo.FJ(∇f,∇²f,x)
-    obj = dot(Fx,Fx)/2
-    return obj, Fx, Jx
+    Fx_ne, Jx_ne = mo.FJ(∇f, ∇²f, x)
+    f = dot(Fx_ne,Fx_ne) / 2
+    #mul!(∇f,transpose(Jx_ne),Fx_ne)
+    return f, ∇f, ∇²f
 end
+
+function NLSolvers.upto_gradient(mo::MeritObjective, ∇f, x)  #Fx is the gradient and Jx is the Hessian
+    Fx_ne, Jx_ne = mo.FJ(mo.Fx, mo.Jx, x)
+    f = dot(Fx_ne,Fx_ne)/2
+    # this is the gradient
+    mul!(∇f,transpose(Jx_ne),Fx_ne)
+    # As you may notice, this can be expensive... Because the gradient
+    # is going to be very simple. May want to create a
+    # special type or way to hook into trust regions here. We can exploit
+    # that we only need the cauchy and the newton steps, not any shifted
+    # systems. There is no need to get the full hessian. because these two
+    # steps are don't need these multiplies
+    # This is the Hessian
+    #Jx .= Jx_sq' * Jx_sq
+    return f, ∇f
+end
+
 
 function solve(problem::NEqProblem,
     x0,
