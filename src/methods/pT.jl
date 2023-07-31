@@ -340,16 +340,6 @@ function activity_coefficient(model::EoSModel,p,T,z=SA[1.]; phase = :unknown, th
     return exp.((μ_mixt .- μ_pure) ./ R̄ ./ T) ./z
 end
 
-function _SLE(model::EosModel,p,T,z=SA[1.]; phase = :unknown, threaded=true)
-    gamma = acitivity_coefficient(model, p, T, z)
-    R̄ = Rgas(model)
-    Hm = 17.909 
-    Tm = 395.64
-    xi = exp(-Hm ./ R̄  .* (1 ./ T .- 1 ./ Tm)) .- gamma
-    return xi
-end
-    
-
 """
     compressibility_factor(model::EoSModel, p, T, z=SA[1.]; phase = :unknown, threaded=true)
 
