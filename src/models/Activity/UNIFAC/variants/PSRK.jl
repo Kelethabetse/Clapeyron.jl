@@ -8,7 +8,7 @@ struct PSRKUNIFAC{c<:EoSModel} <: UNIFACModel
 end
 
 """
-    PSRKUNIFAC(components::Vector{String};
+    PSRKUNIFAC(components;
     puremodel = BasicIdeal,
     userlocations = String[],
     group_userlocations = String[],
@@ -61,8 +61,6 @@ function PSRKUNIFAC(components;
     model = PSRKUNIFAC(groups.components,groups,packagedparams,_puremodel,references,cache)
     return model
 end
-
-@registermodel PSRKUNIFAC
 
 #excess_g_comb(model::UNIFACModel,p,T,z=SA[1.0]) = excess_g_comb_original(model,p,T,z)
 

@@ -10,13 +10,26 @@ end
 
 abstract type SAFTVRSWModel <: SAFTModel end
 @newmodel SAFTVRSW SAFTVRSWModel SAFTVRSWParam
+default_references(::Type{SAFTVRSW}) = ["10.1063/1.473101"]
+default_locations(::Type{SAFTVRSW}) = ["SAFT/SAFTVRSW","properties/molarmass.csv"]
+function transform_params(::Type{SAFTVRSW},params)
+    k = get(params,"k",nothing)
+    params["sigma"].values .*= 1E-10
+    sigma = sigma_LorentzBerthelot(params["sigma"])
+    epsilon = epsilon_LorentzBerthelot(params["epsilon"], k)
+    lambda = lambda_squarewell(params["lambda"], sigma)
+    params["sigma"] = sigma
+    params["epsilon"] = epsilon
+    params["lambda"] = lambda
+    return params
+end
 
 export SAFTVRSW
 
 """
     SAFTVRSWModel <: SAFTModel
 
-    SAFTVRSW(components; 
+    SAFTVRSW(components;
     idealmodel=BasicIdeal,
     userlocations=String[],
     ideal_userlocations=String[],
@@ -54,34 +67,6 @@ SAFT, Variable Range (VR) ,Square Well (SW)
 """
 SAFTVRSW
 
-function SAFTVRSW(components;
-    idealmodel=BasicIdeal,
-    userlocations=String[],
-    ideal_userlocations=String[],
-    verbose=false,
-    assoc_options = AssocOptions())
-
-    params,sites = getparams(components, ["SAFT/SAFTVRSW","properties/molarmass.csv"]; userlocations=userlocations, verbose=verbose)
-
-    segment = params["segment"]
-    k = get(params,"k",nothing)
-    Mw = params["Mw"]
-    params["sigma"].values .*= 1E-10
-    sigma = sigma_LorentzBerthelot(params["sigma"])
-    epsilon = epsilon_LorentzBerthelot(params["epsilon"], k)
-    lambda = lambda_squarewell(params["lambda"], sigma)
-
-    epsilon_assoc = params["epsilon_assoc"]
-    bondvol = params["bondvol"]
-    bondvol,epsilon_assoc = assoc_mix(bondvol,epsilon_assoc,sigma,assoc_options) #combining rules for association
-
-    packagedparams = SAFTVRSWParam(Mw, segment, sigma, lambda, epsilon, epsilon_assoc, bondvol)
-    references = ["10.1063/1.473101"]
-
-    model = SAFTVRSW(packagedparams, sites, idealmodel; ideal_userlocations, references, verbose, assoc_options)
-    return model
-end
-
 function recombine_impl!(model::SAFTVRSWModel)
     sigma = model.params.sigma
     epsilon = model.params.epsilon
@@ -112,7 +97,7 @@ function a_hs(model::SAFTVRSWModel, V, T, z)
     Σz = sum(z)
     m = model.params.segment.values
     m̄ = dot(z, m)/Σz
-    return m̄*6/π/@f(ρ_S)*(3ζ1*ζ2/(1-ζ3) + ζ2^3/(ζ3*(1-ζ3)^2) + (ζ2^3/ζ3^2-ζ0)*log(1-ζ3))
+    return m̄*bmcs_hs(ζ0,ζ1,ζ2,ζ3)
 end
 
 function ζn(model::SAFTVRSWModel, V, T, z, n)

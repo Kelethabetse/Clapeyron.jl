@@ -11,11 +11,10 @@ struct RKPR{T <: IdealModel,α,c,M} <: RKPRModel
     references::Array{String,1}
 end
 
-@registermodel RKPR
 export RKPR
 
 """
-    RKPR(components::Vector{String}; idealmodel=BasicIdeal,
+    RKPR(components; idealmodel=BasicIdeal,
     alpha = RKPRAlpha,
     mixing = vdW1fRule,
     activity=nothing,
@@ -82,7 +81,7 @@ else
 """
 RKPR
 
-function RKPR(components::Vector{String}; idealmodel=BasicIdeal,
+function RKPR(components; idealmodel=BasicIdeal,
     alpha = RKPRAlpha,
     mixing = vdW1fRule,
     activity=nothing,
@@ -93,25 +92,28 @@ function RKPR(components::Vector{String}; idealmodel=BasicIdeal,
     mixing_userlocations = String[],
     activity_userlocations = String[],
     translation_userlocations = String[],
-     verbose=false)
-    params = getparams(components, ["properties/critical.csv", "properties/molarmass.csv","SAFT/PCSAFT/PCSAFT_unlike.csv"]; userlocations=userlocations, verbose=verbose)
-    k  = get(params,"k",nothing)
+    verbose=false)
+    
+    formatted_components = format_components(components)
+    params = getparams(formatted_components, ["properties/critical.csv", "properties/molarmass.csv","SAFT/PCSAFT/PCSAFT_unlike.csv"]; userlocations=userlocations, verbose=verbose)
+    k = get(params,"k",nothing)
     l = get(params,"l",nothing)
     pc = params["Pc"]
     Vc = params["Vc"]
     Mw = params["Mw"]
     Tc = params["Tc"]
+    acentricfactor = get(params,"acentricfactor",nothing)
     init_mixing = init_model(mixing,components,activity,mixing_userlocations,activity_userlocations,verbose)
-    n = length(components)
-    a = PairParam("a",components,zeros(n))
-    b = PairParam("b",components,zeros(n))
-    c = PairParam("c",components,zeros(n))
+    n = length(Tc)
+    a = PairParam("a",formatted_components,zeros(n))
+    b = PairParam("b",formatted_components,zeros(n))
+    c = PairParam("c",formatted_components,zeros(n))
     init_idealmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
-    init_alpha = init_model(alpha,components,alpha_userlocations,verbose)
+    init_alpha = init_alphamodel(alpha,components,acentricfactor,alpha_userlocations,verbose)
     init_translation = init_model(translation,components,translation_userlocations,verbose)
     packagedparams = ABCCubicParam(a,b,c,Tc,pc,Vc,Mw)
     references = String["10.1016/j.fluid.2005.03.020","10.1016/j.fluid.2018.10.005"]
-    model = RKPR(components,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,references)
+    model = RKPR(formatted_components,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,references)
     recombine_cubic!(model,k,l)
     return model
 end
@@ -134,7 +136,7 @@ function ab_premixing(model::RKPRModel,mixing::MixingRule,k  = nothing, l = noth
     for i in @comps
         pci,Tci,Vci = _pc[i],_Tc[i],_Vc[i]
         Zci = pci * Vci / (R̄ * Tci)
-        #Roots.find_zero(x -> Clapeyron.__rkpr_f0_δ(sqrt(2) - 1,1.168*x),0.29) 
+        #Roots.find_zero(x -> Clapeyron.__rkpr_f0_δ(sqrt(2) - 1,1.168*x),0.29)
         #0.2897160510687658
         if Zci >  0.2897160510687658
             δ = sqrt(2) - 1

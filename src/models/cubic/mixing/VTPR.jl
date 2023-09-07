@@ -6,12 +6,10 @@ struct VTPRRule{γ} <: VTPRRuleModel
     references::Array{String,1}
 end
 
-@registermodel VTPRRule
-
 """
     VTPRRule{γ} <: VTPRRuleModel
 
-    VTPRRule(components::Vector{String};
+    VTPRRule(components;
     activity = UNIFAC,
     userlocations=String[],
     activity_userlocations=String[],
@@ -46,10 +44,10 @@ ā = b̄RT(∑[xᵢaᵢᵢαᵢ/(RTbᵢᵢ)] - gᴱᵣₑₛ/(0.53087RT))
 VTPRRule
 
 export VTPRRule
-function VTPRRule(components::Vector{String}; activity = UNIFAC, userlocations=String[],activity_userlocations=String[], verbose::Bool=false)
+function VTPRRule(components; activity = UNIFAC, userlocations=String[],activity_userlocations=String[], verbose::Bool=false)
     _activity = init_model(activity,components,activity_userlocations,verbose)
     references = ["10.1016/S0378-3812(01)00626-4"]
-    model = VTPRRule(components, _activity,references)
+    model = VTPRRule(format_components(components), _activity,references)
     return model
 end
 

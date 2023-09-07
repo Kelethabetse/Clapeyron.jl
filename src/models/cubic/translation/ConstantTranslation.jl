@@ -8,7 +8,7 @@ end
 
 """
     ConstantTranslation <: ConstantTranslationModel
-    ConstantTranslation(components::Vector{String};
+    ConstantTranslation(components;
     userlocations=String[],
     verbose::Bool=false)
 ## Input Parameters
@@ -26,14 +26,6 @@ It does not have parameters by default, the volume shifts must be user-supplied.
 ConstantTranslation
 
 export ConstantTranslation
-
-function ConstantTranslation(components::Vector{String}; userlocations=String[], verbose::Bool=false)
-    params = getparams(components, String[]; userlocations=userlocations, verbose=verbose)
-    c = params["v_shift"]
-    packagedparams = ConstantTranslationParam(c)
-    model = ConstantTranslation(packagedparams, verbose=verbose)
-    return model
-end
 
 recombine_translation!(model::CubicModel,translation_model::ConstantTranslation) = translation_model
 

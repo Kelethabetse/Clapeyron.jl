@@ -1,3 +1,40 @@
+# v0.4.13
+
+## New Features
+
+- (Experimental) Initial `Symbolics.jl` support for bulk properties on `EoSModel`. In particular, all Activity models, cubic models, SAFT models without association, and empiric models are supported. for example, this is now supported:
+
+```julia
+@variables y(..)[1:4], n(..)[1:4]
+mixture = UNIFAC(["water","ethanol","methanol","1-propanol"])
+moles = [n(t)[i] for i in 1:4] #Clapeyron accepts mole amounts, so it is not necessary to perform transformations to mole fractions
+bc_l = y(t, 0.0) .~ activity_coefficient(mixture, 1.0, 298.15, moles)
+```
+
+## Bug Fixes
+
+- automatic precompile is disabled in this version.
+
+# v0.4.12
+
+## New Features
+
+- `@registermodel` macro is now a no-op. custom models that have a `components::Vector{String}` automatically support the printing interface and if they have `model.params.Mw`, they support molecular weight calculations.
+
+- Cubic roots now use a real solver. this allows more stability and correctness in challenging EoS
+
+# v0.4.11
+
+## New Features
+
+- The package now performs precompilation (via `PrecompileTools.jl`) of some commonly used functions and EoSModels. this will add more time at the installation of the package, in exchange with decreased loading times each time `Clapeyron` is loaded in a new julia session. you can turn on/off the feature with `Clapeyron.precompile_clapeyron!(setting::Bool)` (recomended in the case of developing the library). due to how precompilation is done, it is only done from julia 1.9 onwards. 
+- New EoS: NRTL with aspen paranetrization of τᵢⱼ : `aspenNRTL`
+- `split_model` should be a little bit faster, and will perform correct splitting of group association models that use `get_group_idx`.
+
+## Bug fixes
+
+- Combining rule for epsilon in `SAFTgammaMie` updated from `√(ϵᵢ*ϵⱼ)*(σᵢ^3 * σⱼ^3)/σᵢⱼ^6` to `√(ϵᵢ*ϵⱼ*(σᵢ^3 * σⱼ^3))/σᵢⱼ^3`. the old behaviour can be obtained by passing the argument `epsilon_mixing::Symbol` to the model constructor. (#179)
+
 # v0.4.10
 
 ## New Features

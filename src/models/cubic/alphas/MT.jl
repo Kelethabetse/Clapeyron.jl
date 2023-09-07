@@ -1,6 +1,4 @@
-struct MTAlphaParam <: EoSParam
-    acentricfactor::SingleParam{Float64}
-end
+const MTAlphaParam = SimpleAlphaParam
 
 @newmodelsimple MTAlpha SoaveAlphaModel MTAlphaParam
 export MTAlpha
@@ -8,12 +6,11 @@ export MTAlpha
 """
     MTAlpha <: MTAlphaModel
     
-    MTAlpha(components::Vector{String};
+    MTAlpha(components;
     userlocations=String[],
     verbose::Bool=false)
 
 ## Input Parameters
-
 
 - `acentricfactor`: Single Parameter (`Float64`)
 
@@ -32,13 +29,6 @@ mᵢ = 0.384401 + 1.52276ωᵢ - 0.213808ωᵢ^2 + 0.034616ωᵢ^3 - 0.001976ω�
 
 """
 MTAlpha
-
-function MTAlpha(components::Vector{String}; userlocations=String[], verbose::Bool=false)
-    params = getparams(components, ["properties/critical.csv"]; userlocations=userlocations, verbose=verbose,ignore_headers = ONLY_ACENTRICFACTOR)
-    acentricfactor = params["acentricfactor"]
-    packagedparams = MTAlphaParam(acentricfactor)
-    model = MTAlpha(packagedparams, verbose=verbose)
-    return model
-end
+default_locations(::Type{MTAlpha}) = critical_data()
 
 @inline α_m(model,::MTAlpha) = (0.384401,1.52276,-0.213808,0.034616,-0.001976)

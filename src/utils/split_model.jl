@@ -320,16 +320,7 @@ function group_splitter(group::T,splitter) where T <: GroupParameter
         idxi,gi = gc_each_split_model(group,splitter[i])
         idx_split[i] = idxi
         group_split[i] = gi
-        gc_splitter_i = Int[]
-        sizehint!(gc_splitter_i,m)
-        k = 0
-        for j in 1:m
-            if idxi[j]
-                k+=1
-                push!(gc_splitter_i,k)
-            end
-        end
-        gc_splitter[i] = gc_splitter_i
+        gc_splitter[i] = findall(isone,idxi)::Vector{Int}
     end
     return group_split,idx_split,gc_splitter
 end
@@ -374,6 +365,18 @@ split_model(model::EoSModel,subset=nothing) = auto_split_model(model,subset)
 function auto_split_model(Base.@nospecialize(model::EoSModel),subset=nothing)
 
     try
+
+        model_splittable = is_splittable(model)
+
+        if !model_splittable
+            if subset !== nothing
+                len = length(subset)
+                return fill(model,len)
+            else
+                throw(ArgumentError("Invalid type of subset. a non-splittable model needs to specify the splitter (split_model(model,splitter))"))
+            end
+        end
+
         allfields = Dict{Symbol,Any}()
         
         M = typeof(model)
@@ -386,13 +389,14 @@ function auto_split_model(Base.@nospecialize(model::EoSModel),subset=nothing)
         elseif eltype(subset) <: AbstractVector
             splitter = subset
         else
-            throw("invalid type of subset.")
+            throw(ArgumentError("Invalid type of subset. Expected subset::AbstractVector{Union{Int,AbstractVector{Int}}} or subset::Nothing"))
         end
 
         len = length(splitter)
-        has_groups = hasfield(M,:groups)
+        _has_groups = has_groups(M)
+        #shortcut for directly non-splittable models
 
-        if has_groups
+        if _has_groups
             gc_split,idx_splitter,gc_splitter = group_splitter(model.groups,splitter)
             allfields[:groups] = gc_split
             allfields[:components] = split_model(model.groups.components::Vector{String},splitter)
@@ -402,7 +406,6 @@ function auto_split_model(Base.@nospecialize(model::EoSModel),subset=nothing)
             comp_splitter = splitter
             gc_splitter = splitter
         end
-
         #add here any special keys, that behave as non_splittable values
         for modelkey in (:references,)
             if modelkey in allfieldnames
@@ -416,12 +419,12 @@ function auto_split_model(Base.@nospecialize(model::EoSModel),subset=nothing)
             if !haskey(allfields,modelkey)
                 modelx = getproperty(model,modelkey)
                 if is_splittable(modelx)
-                    if modelx isa SiteParam && has_groups && modelx.site_translator !== nothing
+                    if modelx isa SiteParam && _has_groups && modelx.site_translator !== nothing
                         #process site_translator
                         split_sites = split_model(modelx,comp_splitter)
                         recalculate_site_translator!(split_sites,idx_splitter)
                         allfields[modelkey] = split_sites
-                    elseif modelx isa ClapeyronParam && has_groups
+                    elseif modelx isa ClapeyronParam && _has_groups
                         #in this particular case, we can suppose that we have the components field
                         if modelx.components == model.groups.flattenedgroups
                             allfields[modelkey] = split_model(modelx,gc_splitter)
@@ -430,7 +433,7 @@ function auto_split_model(Base.@nospecialize(model::EoSModel),subset=nothing)
                         else
                             throw(error("$modelx is in a GC model, but does not have compatible component names for either component-based or group-based splitting."))
                         end
-                    elseif modelx isa EoSParam && has_groups
+                    elseif modelx isa EoSParam && _has_groups
                         #we supppose a EoSParam has only one layer of splitting
                         allfields[modelkey] = gc_eosparam_split_model(modelx,model.groups,comp_splitter,gc_splitter)
                     else

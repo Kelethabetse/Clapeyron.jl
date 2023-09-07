@@ -6,12 +6,10 @@ struct MHV2Rule{γ} <: MHV2RuleModel
     references::Array{String,1}
 end
 
-@registermodel MHV2Rule
-
 """
     MHV2Rule{γ} <: MHV2RuleModel
 
-    MHV2Rule(components::Vector{String};
+    MHV2Rule(components;
     activity = Wilson,
     userlocations=String[],
     activity_userlocations=String[],
@@ -55,11 +53,11 @@ MHV2Rule
 
 
 export MHV2Rule
-function MHV2Rule(components::Vector{String}; activity = Wilson, userlocations=String[],activity_userlocations=String[], verbose::Bool=false)
+function MHV2Rule(components; activity = Wilson, userlocations=String[],activity_userlocations=String[], verbose::Bool=false)
     _activity = init_model(activity,components,activity_userlocations,verbose)
 
     references = ["10.1016/0378-3812(90)85053-D"]
-    model = MHV2Rule(components, _activity,references)
+    model = MHV2Rule(format_components(components), _activity,references)
     return model
 end
 

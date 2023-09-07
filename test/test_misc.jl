@@ -21,6 +21,9 @@ end
     model_structgc = structSAFTgammaMie(["ethanol","octane"])
     @testset "split_model" begin
         models2 = split_model(model2)
+        @info "The following 2 error messages are expected:"
+        @test_throws ArgumentError split_model(noparam1)
+        @test_throws ArgumentError split_model(model2,missing)
         @test models2[1].components[1] == model2.components[1]
         @test models2[2].components[1] == model2.components[2]
 
@@ -40,10 +43,19 @@ end
         @test structgc_split[1].groups.n_intergroups[1] == [0 1; 1 0]
         @test structgc_split[2].groups.n_intergroups[1] == [0 2; 2 5]
 
+        noparam1_split = split_model(noparam1,1:5)
+        @test length(noparam1_split) == 5
+        @test noparam1_split[1] == noparam1
+
         #from notebooks, #173
         nb_test = SAFTgammaMie(["methane","nitrogen","carbon dioxide","ethane","propane","butane","isobutane",
         "pentane","isopentane","hexane","heptane","octane"])
         @test length(split_model(nb_test)) == 12
+
+        #weird error found on splitting groups
+        model0 = SAFTgammaMie(["ethane"])
+        model0_split = SAFTgammaMie(["methane","ethane"]) |> split_model |> last
+        @test model0.params.epsilon.values[1,1] == model0_split.params.epsilon.values[1,1]
     end
 
     @testset "single component error" begin
@@ -89,18 +101,18 @@ end
         @test repr(ideal1) == "WalkerIdeal{BasicIdeal}(\"hexane\")"
         @test repr("text/plain",ideal1) == "WalkerIdeal{BasicIdeal} with 1 component:\n \"hexane\": \"CH3\" => 2, \"CH2\" => 4\nGroup Type: Walker\nContains parameters: Mw, Nrot, theta1, theta2, theta3, theta4, deg1, deg2, deg3, deg4"
         #@newmodel
-        @test repr(model2) == "PCSAFT{BasicIdeal}(\"water\", \"ethanol\")"
-        @test repr("text/plain",model2) == "PCSAFT{BasicIdeal} with 2 components:\n \"water\"\n \"ethanol\"\nContains parameters: Mw, segment, sigma, epsilon, epsilon_assoc, bondvol"
+        @test repr(model2) == "PCSAFT{BasicIdeal, Float64}(\"water\", \"ethanol\")"
+        @test repr("text/plain",model2) == "PCSAFT{BasicIdeal, Float64} with 2 components:\n \"water\"\n \"ethanol\"\nContains parameters: Mw, segment, sigma, epsilon, epsilon_assoc, bondvol"
         #@newmodelsimple
         @test repr(noparam1) == "NoTranslation()"
-        @test repr("text/plain",noparam1) == "NoTranslation\n"
+        @test repr("text/plain",noparam1) == "NoTranslation()"
         @test repr(simple1) == "PRAlpha(\"propane\")"
         @test repr("text/plain",simple1) == "PRAlpha with 1 component:\n \"propane\"\nContains parameters: acentricfactor"
     end
 
     @testset "Clapeyron Param show" begin
-        @test repr(model2.params) == "Clapeyron.PCSAFTParam"
-        @test repr("text/plain",model2.params) == "Clapeyron.PCSAFTParam for [\"water\", \"ethanol\"] with 6 params:\n Mw::SingleParam{Float64}\n segment::SingleParam{Float64}\n sigma::PairParam{Float64}\n epsilon::PairParam{Float64}\n epsilon_assoc::AssocParam{Float64}\n bondvol::AssocParam{Float64}"
+        @test repr(model2.params) == "Clapeyron.PCSAFTParam{Float64}"
+        @test repr("text/plain",model2.params) == "Clapeyron.PCSAFTParam{Float64} for [\"water\", \"ethanol\"] with 6 params:\n Mw::SingleParam{Float64}\n segment::SingleParam{Float64}\n sigma::PairParam{Float64}\n epsilon::PairParam{Float64}\n epsilon_assoc::AssocParam{Float64}\n bondvol::AssocParam{Float64}"
     end
 
     @testset "phase symbols" begin
@@ -265,6 +277,31 @@ end
             res_pure = Clapeyron.eos(model_pure,1.013e6,298.15) #works
             res_split = Clapeyron.eos(model_split,1.013e6,298.15) #should work
             @test res_pure ≈ res_split
+        end
+   
+        @testset "#188" begin
+            #=
+            in cubics, we do a separation between the alpha model and the main model. while this allows for unprecedented
+            flexibility, this also complicates the case of the default model. there is also an unrelated error, about needing to pass Vc,
+            because our database has all the critical parameters in one file
+            =#
+            data = (
+                species = ["A", "B"],
+                Tc = [18.0, 3.5],
+                Pc = [2.3, 0.1],
+                Mw = [1.0, 1.0],
+                acentricfactor = [0.1, 0.3]
+            )
+
+            file = ParamTable(
+                :single, 
+                data,
+                name="db1"
+            )
+
+            system = PR(["A", "B"], userlocations = [file])
+            @test system.params.Tc[2] == 3.5
+
         end
     end
     @printline

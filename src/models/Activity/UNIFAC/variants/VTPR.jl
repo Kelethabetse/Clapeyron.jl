@@ -8,13 +8,12 @@ struct VTPRUNIFAC{c<:EoSModel} <: VTPRUNIFACModel
     references::Array{String,1}
 end
 
-@registermodel VTPRUNIFAC
 export VTPRUNIFAC
 
 """
     VTPRUNIFACModel <: UNIFACModel
 
-    VTPRUNIFAC(components::Vector{String};
+    VTPRUNIFAC(components;
     puremodel = BasicIdeal,
     userlocations = String[],
     pure_userlocations = String[],

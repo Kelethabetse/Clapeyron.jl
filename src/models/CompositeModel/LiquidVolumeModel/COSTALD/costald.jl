@@ -8,16 +8,27 @@ struct COSTALDParam <: EoSParam
 end
 
 @newmodelsimple COSTALD COSTALDModel COSTALDParam
+"""
+    COSTALD(components; 
+                userlocations::Vector{String}=String[], 
+                verbose::Bool=false)
 
-function COSTALD(components::Vector{String}; userlocations=String[], verbose::Bool=false)
-    params = getparams(components, ["properties/critical.csv"]; userlocations=userlocations, verbose=verbose)
-    Tc = params["Tc"]
-    Vc = params["Vc"]
-    acentricfactor = params["acentricfactor"]
-    packagedparams = COSTALDParam(Tc,Vc,acentricfactor)
-    model = COSTALD(packagedparams;verbose)
-    return model
-end
+## Input parameters
+
+- `Tc`: Single Parameter (Float64) - Critical Temperature `[K]`
+- `Vc`: Single Parameter (`Float64`) - Critical Volume `[m³/mol]`
+- `acentricfactor`: Single Parameter (`Float64`) - Acentric Factor
+
+## Description
+
+COSTALD Equation of State for saturated liquids. it is independent of the pressure.
+
+## References
+Hankinson, R. W., & Thomson, G. H. (1979). A new correlation for saturated densities of liquids and their mixtures. AIChE Journal. American Institute of Chemical Engineers, 25(4), 653–663. [doi:10.1002/aic.690250412](https://doi.org/doi:10.1002/aic.690250412)
+"""
+COSTALD
+default_locations(::Type{COSTALD}) = critical_data()
+default_references(::Type{COSTALD}) = ["10.1002/aic.690250412"]
 
 function volume_impl(model::COSTALDModel,p,T,z=SA[1.0],phase=:unknown,threaded=false,vol0 = nothing)
     Tci = model.params.Tc.values

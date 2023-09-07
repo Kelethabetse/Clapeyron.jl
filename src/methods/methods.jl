@@ -12,7 +12,7 @@ Saturation pressure:
 model = PR(["water"])
 Tsat = 373.15
 saturation_pressure(model,Tsat) #using default method (chemical potential with volume base)
-saturation_pressure(model,Tsat,SuperAncSaturation()) #solve using cubic superancilliary
+saturation_pressure(model,Tsat,SuperAncSaturation()) #solve using cubic superancillary
 ```
 
 Bubble point pressure
@@ -46,6 +46,15 @@ function group_molecular_weight(groups::GroupParameter,mw,z = @SVector [1.])
 end
 
 comp_molecular_weight(mw,z = @SVector [1.]) = 0.001*dot(mw,z)
+
+function molecular_weight(model::EoSModel,z=SA[1.0])
+    MW = mw(model)
+    if has_groups(model)
+        return group_molecular_weight(model.groups,MW,z)
+    else
+        return comp_molecular_weight(MW,z)
+    end
+end
 
 const LIQUID_STR = (:liquid,:LIQUID,:L,:l)
 
@@ -147,9 +156,12 @@ function ∑(iterator)
     return sum(iterator)
 end
 
+∑(x::AbstractArray) = sum(x)
+∑(f,x::AbstractArray) = sum(f,x)
+
 function ∑(fn,iterator)
     len = Base.IteratorSize(typeof(iterator)) === Base.HasLength()
-    hastype =  (Base.IteratorEltype(typeof(iterator)) === Base.HasEltype()) && (eltype(iterator) !== Any)
+    hastype = (Base.IteratorEltype(typeof(iterator)) === Base.HasEltype()) && (eltype(iterator) !== Any)
     local _0
     if hastype
         _0 = zero(eltype(iterator))
@@ -159,18 +171,6 @@ function ∑(fn,iterator)
     len && iszero(length(iterator)) && return _0
     !len && return mapreduce(fn,Base.add_sum,iterator,init=_0)
     return sum(fn,iterator)
-end
-
-"""
-    xlogx(x::Real)
-Return `x * log(x)` for `x ≥ 0`, handling ``x = 0`` by taking the downward limit.
-
-copied from LogExpFunctions.jl
-"""
-function xlogx(x::Real)
-    _0 = zero(x)
-    iszero(x) && return _0
-    ifelse(x >= _0,x*Base.log(max(_0,x)),_0/_0)
 end
 
 @inline function nan_num(V,T,z)

@@ -86,12 +86,17 @@ function _getpaths(location,special_parse = true)
     end =#
     files = readdir(filepath,join = true) #this returns the full (non-normalized) path
     filter!(isfile,files) #remove folders, the reader is not recursive
-    filter!(f -> getfileextension(f) == "csv",files)
+    filter!(f -> getfileextension(f) in ("csv","json"),files)
     map!(realpath,files,files)
     return files
 end
 
+flattenfilepaths(locations) = flattenfilepaths(locations,String[])
+
 function flattenfilepaths(locations,userlocations::Vector{String})
+    if length(locations) == 0 && length(userlocations) == 0
+        return String[]
+    end
     defaultpaths = reduce(vcat,getpaths.(locations; relativetodatabase=true),init = String[])
     userpaths = reduce(vcat,getpaths.(userlocations),init = String[])
     idx = findfirst(isequal("@REMOVEDEFAULTS"),userpaths)
@@ -101,8 +106,11 @@ function flattenfilepaths(locations,userlocations::Vector{String})
     end
     return vcat(defaultpaths,userpaths,String[])
 end
+
+flattenfilepaths(locations,userlocations::String) = flattenfilepaths(locations,[userlocations])
+
 Base.@nospecialize
-function flattenfilepaths(locations,userlocations::NamedTuple)
+function flattenfilepaths(locations,userlocations::Union{NamedTuple,AbstractDict})
     return String[]
 end
 Base.@specialize
@@ -318,3 +326,26 @@ function info_color(text)
     reset = colors[:normal]
     return red * text * reset
 end
+
+function userlocation_merge(loc1,loc2)
+    if isempty(loc2)
+        return loc1
+    elseif loc1 isa Vector{String} && loc2 isa Vector{String}
+        return append!(loc1,loc2)
+    elseif loc1 isa Vector{String} && length(loc1) == 0
+        return loc2
+    elseif loc1 isa Vector{String} && loc2 isa Union{NamedTuple,AbstractDict}
+        return loc2
+    elseif loc1 isa Union{NamedTuple,AbstractDict} && loc1 isa Union{NamedTuple,AbstractDict}
+        loc0 = Dict(pairs(loc1))
+        for k in keys(loc2)
+            loc0[k] = loc2[k]
+        end
+        return loc0
+    else
+        throw(ArgumentError("invalid userlocations combination: old: $loc1, new: $loc2"))
+    end
+end
+
+critical_data() = ["properties/critical.csv"]
+mw_data() = ["properties/molarmass.csv"]

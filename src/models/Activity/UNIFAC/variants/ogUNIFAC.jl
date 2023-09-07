@@ -15,13 +15,12 @@ struct ogUNIFAC{c<:EoSModel} <: ogUNIFACModel
     unifac_cache::UNIFACCache
 end
 
-@registermodel ogUNIFAC
 export ogUNIFAC
 
 """
     ogUNIFACModel <: UNIFACModel
 
-    ogUNIFAC(components::Vector{String};
+    ogUNIFAC(components;
     puremodel = PR, 
     userlocations = String[],
     group_userlocations = String[],

@@ -11,17 +11,15 @@ struct NRTL{c<:EoSModel} <: NRTLModel
     components::Array{String,1}
     params::NRTLParam
     puremodel::EoSVectorParam{c}
-    absolutetolerance::Float64
     references::Array{String,1}
 end
 
-@registermodel NRTL
 
 export NRTL
 """
     NRTL <: ActivityModel
 
-    function NRTL(components::Vector{String};
+    function NRTL(components;
     puremodel=PR,
     userlocations=String[],
     pure_userlocations = String[],
@@ -49,11 +47,13 @@ Gᵢⱼ exp(-cᵢⱼτᵢⱼ)
 """
 NRTL
 
-function NRTL(components::Vector{String}; puremodel=PR,
+function NRTL(components; puremodel=PR,
     userlocations = String[], 
     pure_userlocations = String[],
     verbose=false)
-    params = getparams(components, ["properties/critical.csv", "properties/molarmass.csv","Activity/NRTL/NRTL_unlike.csv"]; userlocations=userlocations, asymmetricparams=["a","b"], ignore_missing_singleparams=["a","b"], verbose=verbose)
+
+    formatted_components = format_components(components)
+    params = getparams(formatted_components, ["properties/molarmass.csv","Activity/NRTL/NRTL_unlike.csv"]; userlocations=userlocations, asymmetricparams=["a","b"], ignore_missing_singleparams=["a","b"], verbose=verbose)
     a  = params["a"]
     b  = params["b"]
     c  = params["c"]
@@ -62,7 +62,7 @@ function NRTL(components::Vector{String}; puremodel=PR,
     _puremodel = init_puremodel(puremodel,components,pure_userlocations,verbose)
     packagedparams = NRTLParam(a,b,c,Mw)
     references = String["10.1002/aic.690140124"]
-    model = NRTL(components,packagedparams,_puremodel,1e-12,references)
+    model = NRTL(formatted_components,packagedparams,_puremodel,references)
     return model
 end
 
@@ -80,7 +80,7 @@ end
 =#
 
 
-function excess_gibbs_free_energy(model::NRTLModel,p,T,z)
+function excess_g_res(model::NRTLModel,p,T,z)
     a = model.params.a.values
     b  = model.params.b.values
     c  = model.params.c.values
@@ -105,3 +105,5 @@ function excess_gibbs_free_energy(model::NRTLModel,p,T,z)
     end
     return n*res*R̄*T
 end
+
+excess_gibbs_free_energy(model::NRTLModel,p,T,z) = excess_g_res(model,p,T,z)

@@ -39,6 +39,12 @@ Clapeyron.DIPPR101Sat
 Liquid Volume Correlations are any [`EoSModel`](@ref) that are subtypes of [`LiquidVolumeModel`](@ref). 
 They return `volume(model,p,T,z, phase = :liquid)`.
 
+```@docs
+RackettLiquid
+YamadaGunnLiquid
+COSTALD
+```
+
 # Virial Models
 
 Virial models are defined in terms of the second virial coefficient, `B(T,z)`. the reduced residual helmholtz energy is defined as:
@@ -51,4 +57,12 @@ To implement a virial model, it is necessary to overload `Clapeyron.second_viria
 AbbottVirial
 TsonopoulosVirial
 EoSVirial2
+```
+
+# Solid Models
+
+Solid models provide simple approximations to the excess chemical potential in the solid phase. Intended to be used in conjuction with a liquid model within a CompositeModel
+
+```@docs
+SolidHfus
 ```

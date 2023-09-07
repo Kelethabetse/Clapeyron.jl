@@ -1,8 +1,6 @@
 abstract type PR78AlphaModel <: AlphaModel end
 
-struct PR78AlphaParam <: EoSParam
-    acentricfactor::SingleParam{Float64}
-end
+const PR78AlphaParam = SimpleAlphaParam
 
 @newmodelsimple PR78Alpha PR78AlphaModel PR78AlphaParam
 export PR78Alpha
@@ -10,7 +8,7 @@ export PR78Alpha
 """
     PR78Alpha <: PR78AlphaModel
     
-    PR78Alpha(components::Vector{String};
+    PR78Alpha(components;
     userlocations=String[],
     verbose::Bool=false)
 
@@ -30,14 +28,8 @@ else
 ```
 """
 PR78Alpha
+default_locations(::Type{PR78Alpha}) = critical_data()
 
-function PR78Alpha(components::Vector{String}; userlocations=String[], verbose::Bool=false)
-    params = getparams(components, ["properties/critical.csv"]; userlocations=userlocations, verbose=verbose,ignore_headers = ONLY_ACENTRICFACTOR)
-    acentricfactor = params["acentricfactor"]
-    packagedparams = PR78AlphaParam(acentricfactor)
-    model = PR78Alpha(packagedparams, verbose=verbose)
-    return model
-end
 
 function α_function(model::CubicModel,V,T,z,alpha_model::PR78AlphaModel)
     Tc = model.params.Tc.values

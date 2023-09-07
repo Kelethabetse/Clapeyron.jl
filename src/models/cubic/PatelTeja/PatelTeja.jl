@@ -12,9 +12,8 @@ struct PatelTeja{T <: IdealModel,α,c,γ} <:PatelTejaModel
     references::Array{String,1}
 end
 
-@registermodel PatelTeja
 """
-    PatelTeja(components::Vector{String};
+    PatelTeja(components;
     idealmodel=BasicIdeal,
     alpha = NoAlpha,
     mixing = vdW1fRule,
@@ -73,7 +72,7 @@ Zcᵢ =  Pcᵢ*Vcᵢ/(R*Tcᵢ)
 PatelTeja
 
 export PatelTeja
-function PatelTeja(components::Vector{String}; idealmodel=BasicIdeal,
+function PatelTeja(components; idealmodel=BasicIdeal,
     alpha = PatelTejaAlpha,
     mixing = vdW1fRule,
     activity=nothing,
@@ -85,24 +84,29 @@ function PatelTeja(components::Vector{String}; idealmodel=BasicIdeal,
     activity_userlocations = String[],
     translation_userlocations = String[],
      verbose=false)
-    params = getparams(components, ["properties/critical.csv", "properties/molarmass.csv","SAFT/PCSAFT/PCSAFT_unlike.csv"]; userlocations=userlocations, verbose=verbose)
+    
+    
+    formatted_components = format_components(components)
+    params = getparams(formatted_components, ["properties/critical.csv", "properties/molarmass.csv","SAFT/PCSAFT/PCSAFT_unlike.csv"]; userlocations=userlocations, verbose=verbose)
     k  = get(params,"k",nothing)
     l = get(params,"l",nothing) 
     pc = params["Pc"]
     Vc = params["Vc"]
     Mw = params["Mw"]
     Tc = params["Tc"]
+    acentricfactor = get(params,"acentricfactor",nothing)
+
     init_mixing = init_model(mixing,components,activity,mixing_userlocations,activity_userlocations,verbose)
-    n = length(components)
-    a = PairParam("a",components,zeros(n))
-    b = PairParam("b",components,zeros(n))
-    c = PairParam("c",components,zeros(n))
+    n = length(Tc)
+    a = PairParam("a",formatted_components,zeros(n))
+    b = PairParam("b",formatted_components,zeros(n))
+    c = PairParam("c",formatted_components,zeros(n))
     init_idealmodel = init_model(idealmodel,components,ideal_userlocations,verbose)
-    init_alpha = init_model(alpha,components,alpha_userlocations,verbose)
+    init_alpha = init_alphamodel(alpha,components,acentricfactor,alpha_userlocations,verbose)
     init_translation = init_model(translation,components,translation_userlocations,verbose)
     packagedparams = PatelTejaParam(a,b,c,Tc,pc,Vc,Mw)
     references = String["10.1016/0009-2509(82)80099-7"]
-    model = PatelTeja(components,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,references)
+    model = PatelTeja(formatted_components,init_alpha,init_mixing,init_translation,packagedparams,init_idealmodel,references)
     recombine_cubic!(model,k,l)
     return model
 end

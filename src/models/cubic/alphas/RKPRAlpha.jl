@@ -1,8 +1,6 @@
 abstract type RKPRAlphaModel <: AlphaModel end
 
-struct RKPRAlphaParam <: EoSParam
-    acentricfactor::SingleParam{Float64}
-end
+const RKPRAlphaParam = SimpleAlphaParam
 
 @newmodelsimple RKPRAlpha RKPRAlphaModel RKPRAlphaParam
 export RKPRAlpha
@@ -10,7 +8,7 @@ export RKPRAlpha
 """
     RKPRAlpha <: RKPRAlphaModel
     
-    RKPRAlpha(components::Vector{String};
+    RKPRAlpha(components;
     userlocations=String[],
     verbose::Bool=false)
 
@@ -29,15 +27,8 @@ Trᵢ = T/Tcᵢ
 ```
 """
 RKPRAlpha
+default_locations(::Type{RKPRAlpha}) = critical_data()
 
-function RKPRAlpha(components::Vector{String}; userlocations=String[], verbose::Bool=false)
-    params = getparams(components, ["properties/critical.csv"]; userlocations=userlocations, verbose=verbose,ignore_headers = ONLY_ACENTRICFACTOR)
-    acentricfactor = params["acentricfactor"]
-    packagedparams = RKPRAlphaParam(acentricfactor)
-    model = RKPRAlpha(packagedparams, verbose=verbose)
-    return model
-end
-#ideally, k should be fitted to Tr = 0.7
 function α_function(model::CubicModel,V,T,z,alpha_model::RKPRAlphaModel)
     Tc = model.params.Tc.values
     Pc = model.params.Pc.values

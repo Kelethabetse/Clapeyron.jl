@@ -58,10 +58,10 @@ function volume_virial end
 
 function volume_virial(model::EoSModel,p,T,z=SA[1.0])
     B = second_virial_coefficient(model,T,z)
-    return volume_virial(B,p,T,z)
+    return volume_virial(B,p,T,z,R = Rgas(model))
 end
 
-function volume_virial(B::Real,p,T,z=SA[1.0])
+function volume_virial(B::Real,p,T,z=SA[1.0];R = R̄)
     _0 = zero(B)
 
     #=
@@ -70,7 +70,7 @@ function volume_virial(B::Real,p,T,z=SA[1.0])
     aV2 - V - B = 0 
     =#
     B > _0 && return _0/_0
-    a = p/(R̄*T*sum(z))
+    a = p/(R *T*sum(z))
     b = -1
     c = -B
     Δ = b*b-4*a*c
@@ -127,7 +127,7 @@ end
 
 function volume_impl(model::EoSModel,p,T,z=SA[1.0],phase=:unknown,threaded=true,vol0=nothing)
 #Threaded version
-    TYPE = typeof(p+T+first(z))
+    TYPE = typeof(p+T+first(z)+one(eltype(model)))
     nan = zero(TYPE)/zero(TYPE)
     #err() = @error("model $model Failed to converge to a volume root at pressure p = $p [Pa], T = $T [K] and compositions = $z")
      

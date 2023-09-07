@@ -5,7 +5,6 @@ end
 abstract type MonomerIdealModel <: IdealModel end
 @newmodelsimple MonomerIdeal MonomerIdealModel MonomerIdealParam
 
-
 """
     MonomerIdeal <: MonomerIdealModel
     MonomerIdeal(components::Array{String,1}; 
@@ -31,15 +30,9 @@ Monomer Ideal Model, result obtained from statistical mechanics `Λ`
 MonomerIdeal
 
 export MonomerIdeal
-function MonomerIdeal(components::Array{String,1}; userlocations::Array{String,1}=String[], verbose=false)
-    params = getparams(components, ["properties/molarmass.csv"]; userlocations=userlocations, verbose=verbose)
-    Mw = params["Mw"]
-    packagedparams = MonomerIdealParam(Mw)
-    return MonomerIdeal(packagedparams)
-end
+default_locations(::Type{MonomerIdeal}) = mw_data()
 
 recombine_impl!(model::MonomerIdealModel) = model
-
 
 function a_ideal(model::MonomerIdealModel, V, T, z)
     Mw = model.params.Mw.values
@@ -47,7 +40,7 @@ function a_ideal(model::MonomerIdealModel, V, T, z)
     for i in @comps
         Mwᵢ = Mw[i]*0.001
         Λᵢ = h/√(k_B*T*Mwᵢ/N_A)
-        res +=  z[i]*log(z[i]*N_A/V*Λᵢ^3)
+        res += xlogx(z[i],N_A/V*Λᵢ^3)
     end
     return res/sum(z) - 1
 end

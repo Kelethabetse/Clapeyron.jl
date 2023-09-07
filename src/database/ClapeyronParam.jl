@@ -7,7 +7,15 @@ abstract type ClapeyronParam end
 abstract type EoSParam end
 export EoSParam
 
+custom_show(param::EoSParam) = _custom_show_param(typeof(param))
+
+function _custom_show_param(::Type{T}) where T <: EoSParam
+    types = fieldtypes(T)
+    return all(x -> x <: ClapeyronParam,types)
+end
+
 function Base.show(io::IO, mime::MIME"text/plain", params::EoSParam)
+    !custom_show(params) && return show_default(io,mime,params)
     names = fieldnames(typeof(params))
     if length(names) == 1
         print(io, typeof(params), " for ", getfield(params, first(names)).components, " with ", length(names), " param:")
@@ -23,6 +31,13 @@ end
 function Base.show(io::IO, params::EoSParam)
     print(io, typeof(params))
 end
+
+function build_eosparam(::Type{T},data) where T <: EoSParam
+    names = fieldnames(T)
+    return T((data[string(name)] for name in names)...)
+end
+
+Base.eltype(p::EoSParam) = Float64
 
 const PARSED_GROUP_VECTOR_TYPE =  Vector{Tuple{String, Vector{Pair{String, Int64}}}}
 
@@ -47,12 +62,28 @@ include("params/AssocParam.jl")
 include("params/GroupParam.jl")
 include("params/SiteParam.jl")
 include("params/AssocOptions.jl")
+include("params/SpecialComp.jl")
 
 const SingleOrPair = Union{<:SingleParameter,<:PairParameter}
 function Base.show(io::IO,param::SingleOrPair)
     print(io, typeof(param), "(\"", param.name, "\")")
     show(io,param.components)
 end
+
+#internal utility function
+#shortcut for model.params.val, but returns nothing if the val is not found.
+@pure function getparam(model::EoSModel,val::Symbol)
+    M = typeof(model)
+    if hasfield(M,:params)
+        if hasfield(typeof(model.params),val)
+            return getfield(model.params,val)
+        end
+    end
+    return nothing
+end
+
+Base.iterate(param::SingleOrPair) = iterate(param.values) 
+Base.iterate(param::SingleOrPair,state) = iterate(param.values,state)
 
 export SingleParam, SiteParam, PairParam, AssocParam, GroupParam
 export AssocOptions

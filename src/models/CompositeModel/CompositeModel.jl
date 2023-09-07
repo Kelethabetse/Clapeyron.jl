@@ -1,49 +1,56 @@
-#this model only holds a named tuple with all models.
+
+include("GenericAncEvaluator.jl")
 include("SaturationModel/SaturationModel.jl")
 include("LiquidVolumeModel/LiquidVolumeModel.jl")
-"""
-    CompositeModel(components;
-    gas = BasicIdeal,
-    liquid = RackettLiquid,
-    saturation = LeeKeslerSat,
-    gas_userlocations = String[],
-    liquid_userlocations = String[],
-    saturation_userlocations = String[]
-
-Composite Model. it is not consistent, but it can hold different correlations that
-are faster than a volume or saturation pressure iteration.
-
-"""
-struct CompositeModel{𝕍,𝕃,𝕊,𝕃𝕍,𝕃𝕊} <: EoSModel
-    components::Vector{String}
-    gas::𝕍
-    liquid::𝕃
-    solid::𝕊
-    saturation::𝕃𝕍
-    melting::𝕃𝕊
-end
+include("PolExpVapour.jl")
+include("SolidModel/SolidHfus.jl")
 
 Base.length(cmodel::CompositeModel) = length(cmodel.components)
 
 function CompositeModel(components;
     liquid = RackettLiquid,
     gas = BasicIdeal,
+    fluid=nothing,
     userlocations = String[],
     solid = nothing,
     saturation = LeeKeslerSat,
     melting = nothing,
     gas_userlocations = String[],
     liquid_userlocations = String[],
+    fluid_userlocations = String[],
     solid_userlocations = String[],
     saturation_userlocations = String[],
     melting_userlocations = String[],
     verbose = false)
 
+    if fluid !== nothing
+        if fluid <: ActivityModel
+            error("Activity models only represent the liquid phase. Please specify a gas phase model.")
+        end
+        gas = fluid
+        liquid = fluid
+        saturation = fluid
+        gas_userlocations = fluid_userlocations
+        liquid_userlocations = fluid_userlocations
+        saturation_userlocations = fluid_userlocations
+    end
+
     init_gas = init_model(gas,components,gas_userlocations,verbose)
-    init_liquid = init_model(liquid,components,liquid_userlocations,verbose)
+    if typeof(liquid) <: EoSModel
+        init_liquid = init_model(liquid,components,liquid_userlocations,verbose)
+    else
+        if liquid <: ActivityModel
+            init_liquid = liquid(components;userlocations=liquid_userlocations,puremodel=gas,verbose)
+        else
+            init_liquid = init_model(liquid,components,liquid_userlocations,verbose)
+        end
+    end
+
     init_solid = init_model(solid,components,solid_userlocations,verbose)
     init_sat = init_model(saturation,components,saturation_userlocations,verbose)
     init_melt = init_model(melting,components,melting_userlocations,verbose)
+
+    components = format_components(components)
     return CompositeModel(components,init_gas,init_liquid,init_solid,init_sat,init_melt)
 end
 
@@ -54,10 +61,6 @@ function Base.show(io::IO,mime::MIME"text/plain",model::CompositeModel)
     model.solid !== nothing && println(io,'\n'," Solid Model: ",model.solid)
     model.saturation !== nothing && print(io,'\n'," Saturation Model: ",model.saturation)
     model.melting !== nothing && print(io,'\n'," Melting Model: ",model.melting)
-end
-
-function Base.show(io::IO,model::CompositeModel)
-    eosshow(io,model)
 end
 
 __gas_model(model::CompositeModel) = model.gas
@@ -125,7 +128,20 @@ function saturation_pressure(model::CompositeModel,T,method::SaturationMethod)
 end
 
 function crit_pure(model::CompositeModel)
-    return crit_pure(model.models.saturation)
+    single_component_check(crit_pure,model)
+    return crit_pure(model.saturation)
+end
+
+function x0_sat_pure(model::CompositeModel,T)
+    p = x0_psat(model,T)
+    vl = volume(model.liquid,p,T,phase=:l)
+    vv = volume(model.gas,p,T,phase=:v)
+    return vl,vv
+end
+
+function x0_psat(model::CompositeModel,T)
+    ps,_,_ = saturation_pressure(model.saturation,T)
+    return ps
 end
 
 function saturation_temperature(model::CompositeModel,p,method::SaturationMethod)
@@ -152,11 +168,7 @@ __tpflash_cache_model(model::CompositeModel,p,T,z) = PTFlashWrapper(model,T)
 
 function PTFlashWrapper(model::CompositeModel,T::Number) 
     satmodels = split_model(model.saturation)
-    if is_splittable(model.gas)
-        gases = split_model(model.gas)
-    else
-        gases = fill(model.gas,length(model.components))
-    end
+    gases = split_model(model.gas,1:length(model))
     sats = saturation_pressure.(satmodels,T)
     vv_pure = last.(sats)
     RT = R̄*T

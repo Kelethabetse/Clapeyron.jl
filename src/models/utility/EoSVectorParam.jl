@@ -22,12 +22,9 @@ function init_puremodel(model,components,userlocations,verbose)
 end
 
 function init_puremodel(model::EoSModel,components,userlocations,verbose)
-    if is_splittable(model)
-        pure = split_model(model)
-    else
-        pure = fill(model,length(components))
-    end
-    return EoSVectorParam(components,model,pure)
+    _components = format_components(components)
+    pure = split_model(model,1:length(_components))
+    return EoSVectorParam(_components,model,pure)
 end
 
 function recombine_impl!(model::EoSVectorParam)

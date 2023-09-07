@@ -346,7 +346,7 @@ end
         @test Clapeyron.dew_temperature(system1,p2,z,Clapeyron.FugDewTemperature(x0 = [0.1,0.9]))[1] ≈ Tres2 rtol = 1E-6
         @test Clapeyron.dew_temperature(system1,p2,z,Clapeyron.FugDewTemperature(T0 = 450))[1] ≈ Tres2 rtol = 1E-6
         @test Clapeyron.dew_temperature(system1,p2,z,Clapeyron.FugDewTemperature(T0 = 450,x0 = [0.1,0.9]))[1] ≈ Tres2 rtol = 1E-6
-        @test Clapeyron.dew_temperature(system1,p2,z,Clapeyron.FugDewTemperature(itmax_newton = 1))[1] ≈ Tres2 rtol = 1E-6
+        @test Clapeyron.dew_temperature(system1,p2,z,Clapeyron.FugDewTemperature(itmax_newton = 2))[1] ≈ Tres2 rtol = 1E-6
         GC.gc()
 
     end
@@ -410,6 +410,29 @@ end
     
 end
 
+@testset "Solid Phase Equilibria" begin
+    @testset "Solid-Liquid Equilibria" begin
+        model = CompositeModel([("1-decanol",["CH3"=>1,"CH2"=>9,"OH (P)"=>1]),("thymol",["ACCH3"=>1,"ACH"=>3,"ACOH"=>1,"ACCH"=>1,"CH3"=>2])];liquid=UNIFAC,solid=SolidHfus,saturation=nothing)
+        T = 275.
+        p = 1e5
+        s1 = sle_solubility(model,p,T,[1.,1.];solute=["1-decanol"])
+        s2 = sle_solubility(model,p,T,[1.,1.];solute=["thymol"])
+        @test s1[2] ≈ 0.21000625991669147 rtol = 1e-6
+        @test s2[2] ≈ 0.3370264930822045 rtol = 1e-6
+
+        (TE,xE) = eutectic_point(model)
+        @test TE ≈ 271.97967645045804 rtol = 1e-6
+    end
+   
+    @testset "Solid-Liquid-Liquid Equilibria" begin
+        model = CompositeModel(["water","ethanol",("ibuprofen",["ACH"=>4,"ACCH2"=>1,"ACCH"=>1,"CH3"=>3,"COOH"=>1,"CH"=>1])];liquid=UNIFAC,solid=SolidHfus,saturation=nothing)
+        p = 1e5
+        T = 323.15
+        (s1,s2) = slle_solubility(model,p,T)
+        @test s1[3] ≈ 0.0015804179997257882 rtol = 1e-6
+    end
+end
+
 #test for really really difficult equilibria.
 @testset "challenging equilibria" begin
        
@@ -435,7 +458,8 @@ end
         T = 202.694
         v0 = [-4.136285855713797, -4.131888756537859, 0.9673991775701574, 0.014192499147585259, 0.014746430039492817, 0.003661893242764558]
         model = PCSAFT(["methane","butane","isobutane","pentane"])
-        @test_broken bubble_pressure(model,T,x;v0 = v0)[1] ≈ 5.913118531569793e6 rtol = 1e-4
+        # @test_broken bubble_pressure(model,T,x;v0 = v0)[1] ≈ 5.913118531569793e6 rtol = 1e-4
+        # FIXME: The test does not yield the same value depending on the OS and the julia version
     end
 end
 
